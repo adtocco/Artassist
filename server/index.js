@@ -30,8 +30,9 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 // Process a single queued item by id
 app.post('/api/process/:id', async (req, res) => {
   const id = req.params.id;
+  const lang = req.body?.lang || 'fr';
   try {
-    const result = await processItem({ id, supabaseAdmin, openai });
+    const result = await processItem({ id, supabaseAdmin, openai, lang });
     res.json({ success: true, result });
   } catch (err) {
     console.error('Error processing item', err);
@@ -59,22 +60,3 @@ if (fs.existsSync(distPath)) {
   });
 }
 app.listen(port, () => console.log(`Server listening on ${port}`));
-
-// Optional: run worker inside the same web service container if separate worker services
-// are not available on the hosting plan. Enable by setting RUN_WORKER_IN_WEB=true.
-if (process.env.RUN_WORKER_IN_WEB === 'true' || process.env.RUN_WORKER_IN_WEB === '1') {
-  try {
-    const workerPath = 'server/worker.js';
-    console.log('Spawning local worker:', workerPath);
-    const cp = spawn(process.execPath, [workerPath], {
-      stdio: 'inherit',
-      env: process.env,
-    });
-
-    cp.on('exit', (code) => {
-      console.log('Worker process exited with code', code);
-    });
-  } catch (err) {
-    console.error('Failed to spawn in-process worker', err);
-  }
-}

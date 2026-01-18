@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { analyzePhoto } from '../lib/openai';
 import './PhotoUpload.css';
 
 export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
@@ -57,7 +56,7 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
 
         setProgress(`Queued ${i + 1} of ${selectedFiles.length} for analysis...`);
 
-        // Save a pending record to the database so a background worker can analyze it later
+        // Save a pending record to the database
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
@@ -76,8 +75,19 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
           .single();
 
         if (dbError) throw dbError;
-
         results.push(dbData);
+
+        // Trigger immediate processing on the server so no external worker is required
+        try {
+          setProgress(`Processing ${i + 1} of ${selectedFiles.length}...`);
+          await fetch(`/api/process/${dbData.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lang })
+          });
+        } catch (procErr) {
+          console.warn('Failed to trigger server processing:', procErr);
+        }
       }
 
       setProgress('Complete!');
