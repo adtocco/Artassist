@@ -53,41 +53,26 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr')
       max_tokens: 1000
     });
 
-    const text = response.choices?.[0]?.message?.content || '';
-
-    // Fallback: some models will reply that they cannot access external images.
-    // Detect that and retry with a prompt that asks the model to imagine the image
-    // using filename and promptType metadata so it returns a useful analysis.
-    if (/cannot access|can't access|cannot view|cannot see|ne peut pas accéder|ne peux pas visualiser|je ne peux pas accéder/i.test(text)) {
-      const filename = (imageUrl || '').split('/').pop() || 'image';
-      const fallbackUser = `L'URL de l'image est: ${imageUrl}\nNom de fichier: ${filename}\nType d'analyse demandée: ${promptType}\n\nSi vous ne pouvez pas accéder directement à l'image, merci d'imaginer une photographie correspondant à ces métadonnées (nom de fichier et type d'analyse) et de fournir une analyse artistique détaillée en vous concentrant sur la composition, la lumière, la couleur, le sujet, la technique et les recommandations d'amélioration. ${languageNote}`;
-
-      const fallbackResp = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: `${systemPrompt}\n\n${languageNote}` },
-          { role: 'user', content: fallbackUser }
-        ],
-        max_tokens: 1000
-      });
-
-      return fallbackResp.choices?.[0]?.message?.content || text;
-    }
-
-    return text;
+    return response.choices[0].message.content;
   } catch (error) {
     console.error('Error analyzing photo:', error);
     throw error;
   }
 }
 
-export async function findPhotoSeries(analyses, lang = 'fr', hint = '') {
+export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') {
   try {
     const analysisTexts = analyses.map((a, i) => 
       `Photo ${i + 1}: ${a.analysis}`
     ).join('\n\n');
 
     const languageNote = lang && lang !== 'en' ? `Veuillez répondre en ${lang === 'fr' ? 'français' : lang}.` : 'Please respond in English.';
+
+    const instructionNote = instructions && instructions.trim()
+      ? (lang === 'fr'
+          ? `Consignes supplémentaires pour l'analyse de la série : ${instructions}`
+          : `Additional instructions for the series analysis: ${instructions}`)
+      : '';
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -98,7 +83,7 @@ export async function findPhotoSeries(analyses, lang = 'fr', hint = '') {
         },
         {
           role: "user",
-          content: `Sur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\n${hint ? `Indication fournie par l'utilisateur: ${hint}\n\n` : ''}Veuillez fournir une sortie structurée avec des recommandations claires.`
+          content: `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires.`
         }
       ],
       max_tokens: 1500

@@ -9,7 +9,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [seriesRecommendation, setSeriesRecommendation] = useState(null);
   const [analyzingSeries, setAnalyzingSeries] = useState(false);
-  const [seriesHint, setSeriesHint] = useState('');
+  const [seriesInstructions, setSeriesInstructions] = useState('');
 
   useEffect(() => {
     fetchPhotos();
@@ -42,7 +42,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
 
     setAnalyzingSeries(true);
     try {
-      const recommendation = await findPhotoSeries(photos, lang, seriesHint.trim());
+      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions);
       setSeriesRecommendation(recommendation);
     } catch (err) {
       console.error('Error analyzing series:', err);
@@ -82,35 +82,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     }
   };
 
-  const reanalyzePhoto = async (photo) => {
-    if (!confirm('Relancer l\'analyse pour cette photo ?')) return;
-    try {
-      // Reset analysis fields and mark as pending for worker to pick up
-      const updates = {
-        status: 'pending',
-        // Keep existing `analysis` text to avoid NOT NULL constraint errors;
-        // worker will overwrite when processing.
-        analysis_started_at: null,
-        analysis_finished_at: null,
-        error_message: null,
-        processor: null,
-      };
-
-      const { error } = await supabase
-        .from('photo_analyses')
-        .update(updates)
-        .eq('id', photo.id);
-
-      if (error) throw error;
-
-      fetchPhotos();
-      alert('Photo remise en file pour analyse.');
-    } catch (err) {
-      console.error('Error reanalyzing photo:', err);
-      alert('Erreur lors de la relance de l\'analyse: ' + err.message);
-    }
-  };
-
   if (loading) {
     return <div className="loading">Loading your photos...</div>;
   }
@@ -127,21 +98,22 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     <div className="photo-gallery">
       <div className="gallery-header">
         <h2>Your Photo Collection ({photos.length})</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="Indicate a theme or hint (e.g. 'moody portraits', 'high-contrast')"
-            value={seriesHint}
-            onChange={(e) => setSeriesHint(e.target.value)}
-            disabled={analyzingSeries}
-            style={{ padding: '6px', borderRadius: 6, border: '1px solid #ccc', minWidth: 220 }}
+        <div className="series-controls">
+          <label htmlFor="series-instructions">Consignes (optionnel) :</label>
+          <textarea
+            id="series-instructions"
+            value={seriesInstructions}
+            onChange={(e) => setSeriesInstructions(e.target.value)}
+            placeholder={lang === 'fr' ? "Ex: Cherche une série cohérente autour de la couleur et du contraste" : "E.g.: Find a series focusing on color and contrast coherence"}
+            rows={2}
           />
+
           <button 
             onClick={analyzeCollection}
             disabled={analyzingSeries || photos.length < 2}
             className="analyze-series-button"
           >
-            {analyzingSeries ? 'Analyzing...' : '🎯 Find Photo Series'}
+            {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Trouver une série' : 'Find Photo Series')}
           </button>
         </div>
       </div>
@@ -149,11 +121,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
       {seriesRecommendation && (
         <div className="series-recommendation">
           <h3>📊 Collection Analysis & Series Recommendations</h3>
-          {seriesHint && (
-            <p className="series-hint" style={{ fontStyle: 'italic', color: '#555' }}>
-              Indication utilisée : {seriesHint}
-            </p>
-          )}
           <div className="recommendation-content">
             {seriesRecommendation.split('\n').map((line, idx) => (
               <p key={idx}>{line}</p>
@@ -179,13 +146,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
             <div className="gallery-item-overlay">
               <span className="prompt-badge">{photo.prompt_type}</span>
               <span className="file-name">{photo.file_name}</span>
-              <button
-                className="reanalyze-button"
-                onClick={(e) => { e.stopPropagation(); reanalyzePhoto(photo); }}
-                aria-label={`Reanalyze ${photo.file_name}`}
-              >
-                🔄
-              </button>
               <button
                 className="thumbnail-delete"
                 onClick={(e) => { e.stopPropagation(); deletePhoto(photo); }}
@@ -225,13 +185,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
                 <h4>Analysis:</h4>
                 <p>{selectedPhoto.analysis}</p>
               </div>
-
-              <button 
-                className="reanalyze-button modal-reanalyze"
-                onClick={() => reanalyzePhoto(selectedPhoto)}
-              >
-                🔄 Relancer l'analyse
-              </button>
 
               <button 
                 className="delete-button"

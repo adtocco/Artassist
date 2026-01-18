@@ -55,44 +55,28 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
 
         const urlToAnalyze = signedData?.signedUrl || publicUrl;
 
-        setProgress(`Queued ${i + 1} of ${selectedFiles.length} for analysis...`);
+        setProgress(`Analyzing ${i + 1} of ${selectedFiles.length}...`);
 
-        // Save a pending record to the database
+        // Analyze with OpenAI (pass selected language). Use signed URL when possible to avoid timeouts.
+        const analysis = await analyzePhoto(urlToAnalyze, promptType, lang);
+
+        // Save to database
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
             user_id: user.id,
             photo_url: publicUrl,
             storage_path: fileName,
-            analysis: null,
+            analysis: analysis,
             prompt_type: promptType,
-            file_name: file.name,
-            status: 'pending',
-            analysis_started_at: null,
-            analysis_finished_at: null,
-            processor: null
+            file_name: file.name
           })
           .select()
           .single();
 
         if (dbError) throw dbError;
+
         results.push(dbData);
-
-        // Immediately analyze the uploaded image on the client and update DB
-        try {
-          setProgress(`Analyzing ${i + 1} of ${selectedFiles.length}...`);
-          const analysisText = await analyzePhoto(urlToAnalyze, promptType, lang);
-
-          const { error: updateErr } = await supabase
-            .from('photo_analyses')
-            .update({ status: 'done', analysis: analysisText, analysis_finished_at: new Date().toISOString(), processor: 'client' })
-            .eq('id', dbData.id);
-
-          if (updateErr) throw updateErr;
-        } catch (procErr) {
-          console.error('Client analysis failed:', procErr);
-          await supabase.from('photo_analyses').update({ status: 'error', error_message: procErr.message }).eq('id', dbData.id);
-        }
       }
 
       setProgress('Complete!');
