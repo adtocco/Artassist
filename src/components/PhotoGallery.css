@@ -105,6 +105,9 @@
 
 .gallery-item-overlay {
   position: absolute;
+.reanalyze-button { background: rgba(255,255,255,0.9); border-radius:6px; padding:6px; border:1px solid #eee; cursor:pointer }
+.reanalyze-button:hover { transform:translateY(-1px) }
+.modal-reanalyze { margin-top:8px; background:#fff; border:1px solid #e2e8f0 }
   bottom: 0;
   left: 0;
   right: 0;

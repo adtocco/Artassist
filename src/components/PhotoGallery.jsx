@@ -82,6 +82,35 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     }
   };
 
+  const reanalyzePhoto = async (photo) => {
+    if (!confirm('Relancer l\'analyse pour cette photo ?')) return;
+    try {
+      // Reset analysis fields and mark as pending for worker to pick up
+      const updates = {
+        status: 'pending',
+        analysis: null,
+        analysis_started_at: null,
+        analysis_finished_at: null,
+        error_message: null,
+        processor: null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('photo_analyses')
+        .update(updates)
+        .eq('id', photo.id);
+
+      if (error) throw error;
+
+      fetchPhotos();
+      alert('Photo remise en file pour analyse.');
+    } catch (err) {
+      console.error('Error reanalyzing photo:', err);
+      alert('Erreur lors de la relance de l\'analyse: ' + err.message);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading your photos...</div>;
   }
@@ -151,6 +180,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
               <span className="prompt-badge">{photo.prompt_type}</span>
               <span className="file-name">{photo.file_name}</span>
               <button
+                className="reanalyze-button"
+                onClick={(e) => { e.stopPropagation(); reanalyzePhoto(photo); }}
+                aria-label={`Reanalyze ${photo.file_name}`}
+              >
+                🔄
+              </button>
+              <button
                 className="thumbnail-delete"
                 onClick={(e) => { e.stopPropagation(); deletePhoto(photo); }}
                 aria-label={`Delete ${photo.file_name}`}
@@ -189,6 +225,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
                 <h4>Analysis:</h4>
                 <p>{selectedPhoto.analysis}</p>
               </div>
+
+              <button 
+                className="reanalyze-button modal-reanalyze"
+                onClick={() => reanalyzePhoto(selectedPhoto)}
+              >
+                🔄 Relancer l'analyse
+              </button>
 
               <button 
                 className="delete-button"
