@@ -61,25 +61,56 @@ export default function AnalysisQueue({ lang = 'fr' }) {
     }
   };
 
+  const getThumbUrl = (item) => {
+    if (item.photo_url) return item.photo_url;
+    try {
+      const { data } = supabase.storage.from('photos').getPublicUrl(item.storage_path || '');
+      return data?.publicUrl || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
   return (
     <div className="analysis-queue">
       <h3>Analyse Queue</h3>
-      {loading && <p>Loading queue...</p>}
-      {!loading && items.length === 0 && <p>No queued items.</p>}
+      {loading && <p className="muted">Loading queue...</p>}
+      {!loading && items.length === 0 && <p className="muted">No queued items.</p>}
       <ul>
         {items.map((it) => (
           <li key={it.id} className={`queue-item ${it.status}`}>
-            <div className="meta">
-              <strong>{it.file_name}</strong> — <em>{it.status}</em>
-            </div>
-            <div className="actions">
-              {it.status === 'pending' && (
-                <button onClick={() => processNow(it)}>Process now</button>
+            <div className="thumb">
+              {getThumbUrl(it) ? (
+                <img src={getThumbUrl(it)} alt={it.file_name} />
+              ) : (
+                <div className="thumb-fallback">IMG</div>
               )}
-              {it.status === 'processing' && <span>Processing…</span>}
-              {it.status === 'done' && <button onClick={() => navigator.clipboard.writeText(it.analysis || '')}>Copy analysis</button>}
             </div>
-            <div className="small">{it.prompt_type} • {it.created_at}</div>
+
+            <div className="content">
+              <div className="row top">
+                <div className="title">{it.file_name}</div>
+                <div className={`badge status-${it.status}`}>{it.status}</div>
+              </div>
+
+              <div className="row meta">
+                <div className="prompt-type">{it.prompt_type}</div>
+                <div className="created">{it.created_at ? new Date(it.created_at).toLocaleString(lang) : ''}</div>
+              </div>
+
+              <div className="row actions">
+                {it.status === 'pending' && (
+                  <button className="btn primary" onClick={() => processNow(it)}>Process now</button>
+                )}
+                {it.status === 'processing' && <span className="muted">Processing…</span>}
+                {it.status === 'done' && (
+                  <>
+                    <button className="btn" onClick={() => navigator.clipboard.writeText(it.analysis || '')}>Copy analysis</button>
+                    <button className="btn subtle" onClick={() => navigator.clipboard.writeText(it.series || '')}>Copy series</button>
+                  </>
+                )}
+              </div>
+            </div>
           </li>
         ))}
       </ul>
