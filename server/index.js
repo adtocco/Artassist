@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { processItem } from './processor.js';
+import { spawn } from 'child_process';
 
 const app = express();
 app.use(bodyParser.json());
@@ -38,3 +39,22 @@ app.post('/api/process/:id', async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server listening on ${port}`));
+
+// Optional: run worker inside the same web service container if separate worker services
+// are not available on the hosting plan. Enable by setting RUN_WORKER_IN_WEB=true.
+if (process.env.RUN_WORKER_IN_WEB === 'true' || process.env.RUN_WORKER_IN_WEB === '1') {
+  try {
+    const workerPath = 'server/worker.js';
+    console.log('Spawning local worker:', workerPath);
+    const cp = spawn(process.execPath, [workerPath], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    cp.on('exit', (code) => {
+      console.log('Worker process exited with code', code);
+    });
+  } catch (err) {
+    console.error('Failed to spawn in-process worker', err);
+  }
+}
