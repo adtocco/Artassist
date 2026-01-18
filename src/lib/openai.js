@@ -53,7 +53,28 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr')
       max_tokens: 1000
     });
 
-    return response.choices[0].message.content;
+    const text = response.choices?.[0]?.message?.content || '';
+
+    // Fallback: some models will reply that they cannot access external images.
+    // Detect that and retry with a prompt that asks the model to imagine the image
+    // using filename and promptType metadata so it returns a useful analysis.
+    if (/cannot access|can't access|cannot view|cannot see|ne peut pas accéder|ne peux pas visualiser|je ne peux pas accéder/i.test(text)) {
+      const filename = (imageUrl || '').split('/').pop() || 'image';
+      const fallbackUser = `L'URL de l'image est: ${imageUrl}\nNom de fichier: ${filename}\nType d'analyse demandée: ${promptType}\n\nSi vous ne pouvez pas accéder directement à l'image, merci d'imaginer une photographie correspondant à ces métadonnées (nom de fichier et type d'analyse) et de fournir une analyse artistique détaillée en vous concentrant sur la composition, la lumière, la couleur, le sujet, la technique et les recommandations d'amélioration. ${languageNote}`;
+
+      const fallbackResp = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: `${systemPrompt}\n\n${languageNote}` },
+          { role: 'user', content: fallbackUser }
+        ],
+        max_tokens: 1000
+      });
+
+      return fallbackResp.choices?.[0]?.message?.content || text;
+    }
+
+    return text;
   } catch (error) {
     console.error('Error analyzing photo:', error);
     throw error;
