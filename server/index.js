@@ -1,5 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { processItem } from './processor.js';
@@ -38,6 +40,24 @@ app.post('/api/process/:id', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
+
+// Serve frontend static files when present (production build in ../dist)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, '..', 'dist');
+
+// If a dist folder exists, serve it and fall back to index.html for SPA routes
+import fs from 'fs';
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath, { maxAge: '1d' }));
+
+  // Keep API and health endpoints intact; for all other GETs, return index.html
+  app.get('*', (req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 app.listen(port, () => console.log(`Server listening on ${port}`));
 
 // Optional: run worker inside the same web service container if separate worker services
