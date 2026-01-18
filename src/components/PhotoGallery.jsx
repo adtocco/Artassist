@@ -88,7 +88,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
       // Reset analysis fields and mark as pending for worker to pick up
       const updates = {
         status: 'pending',
-        analysis: null,
+        // Keep existing `analysis` text to avoid NOT NULL constraint errors;
+        // worker will overwrite when processing.
         analysis_started_at: null,
         analysis_finished_at: null,
         error_message: null,
