@@ -60,7 +60,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr')
   }
 }
 
-export async function findPhotoSeries(analyses, lang = 'fr') {
+export async function findPhotoSeries(analyses, lang = 'fr', hint = '') {
   try {
     const analysisTexts = analyses.map((a, i) => 
       `Photo ${i + 1}: ${a.analysis}`
@@ -77,7 +77,7 @@ export async function findPhotoSeries(analyses, lang = 'fr') {
         },
         {
           role: "user",
-          content: `Sur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires.`
+          content: `Sur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\n${hint ? `Indication fournie par l'utilisateur: ${hint}\n\n` : ''}Veuillez fournir une sortie structurée avec des recommandations claires.`
         }
       ],
       max_tokens: 1500

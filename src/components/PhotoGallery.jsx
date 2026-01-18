@@ -9,6 +9,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [seriesRecommendation, setSeriesRecommendation] = useState(null);
   const [analyzingSeries, setAnalyzingSeries] = useState(false);
+  const [seriesHint, setSeriesHint] = useState('');
 
   useEffect(() => {
     fetchPhotos();
@@ -41,7 +42,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
 
     setAnalyzingSeries(true);
     try {
-      const recommendation = await findPhotoSeries(photos, lang);
+      const recommendation = await findPhotoSeries(photos, lang, seriesHint.trim());
       setSeriesRecommendation(recommendation);
     } catch (err) {
       console.error('Error analyzing series:', err);
@@ -97,18 +98,33 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     <div className="photo-gallery">
       <div className="gallery-header">
         <h2>Your Photo Collection ({photos.length})</h2>
-        <button 
-          onClick={analyzeCollection}
-          disabled={analyzingSeries || photos.length < 2}
-          className="analyze-series-button"
-        >
-          {analyzingSeries ? 'Analyzing...' : '🎯 Find Photo Series'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Indicate a theme or hint (e.g. 'moody portraits', 'high-contrast')"
+            value={seriesHint}
+            onChange={(e) => setSeriesHint(e.target.value)}
+            disabled={analyzingSeries}
+            style={{ padding: '6px', borderRadius: 6, border: '1px solid #ccc', minWidth: 220 }}
+          />
+          <button 
+            onClick={analyzeCollection}
+            disabled={analyzingSeries || photos.length < 2}
+            className="analyze-series-button"
+          >
+            {analyzingSeries ? 'Analyzing...' : '🎯 Find Photo Series'}
+          </button>
+        </div>
       </div>
 
       {seriesRecommendation && (
         <div className="series-recommendation">
           <h3>📊 Collection Analysis & Series Recommendations</h3>
+          {seriesHint && (
+            <p className="series-hint" style={{ fontStyle: 'italic', color: '#555' }}>
+              Indication utilisée : {seriesHint}
+            </p>
+          )}
           <div className="recommendation-content">
             {seriesRecommendation.split('\n').map((line, idx) => (
               <p key={idx}>{line}</p>
