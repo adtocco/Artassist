@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { findPhotoSeries } from '../lib/openai';
 import './PhotoGallery.css';
 
-export default function PhotoGallery({ refreshTrigger }) {
+export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -41,7 +41,7 @@ export default function PhotoGallery({ refreshTrigger }) {
 
     setAnalyzingSeries(true);
     try {
-      const recommendation = await findPhotoSeries(photos);
+      const recommendation = await findPhotoSeries(photos, lang);
       setSeriesRecommendation(recommendation);
     } catch (err) {
       console.error('Error analyzing series:', err);
@@ -134,6 +134,13 @@ export default function PhotoGallery({ refreshTrigger }) {
             <div className="gallery-item-overlay">
               <span className="prompt-badge">{photo.prompt_type}</span>
               <span className="file-name">{photo.file_name}</span>
+              <button
+                className="thumbnail-delete"
+                onClick={(e) => { e.stopPropagation(); deletePhoto(photo); }}
+                aria-label={`Delete ${photo.file_name}`}
+              >
+                🗑️
+              </button>
             </div>
           </div>
         ))}

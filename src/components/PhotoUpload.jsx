@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { analyzePhoto } from '../lib/openai';
 import './PhotoUpload.css';
 
-export default function PhotoUpload({ onPhotoAnalyzed }) {
+export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
   const [uploading, setUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [promptType, setPromptType] = useState('artist');
@@ -48,21 +48,29 @@ export default function PhotoUpload({ onPhotoAnalyzed }) {
           .from('photos')
           .getPublicUrl(fileName);
 
-        setProgress(`Analyzing ${i + 1} of ${selectedFiles.length}...`);
-        
-        // Analyze with OpenAI
-        const analysis = await analyzePhoto(publicUrl, promptType);
+        // Try to create a short-lived signed URL so external services can reliably download the image
+        const { data: signedData, error: signError } = await supabase.storage
+          .from('photos')
+          .createSignedUrl(fileName, 60); // signed URL valid for 60s
 
-        // Save to database
+        const urlToAnalyze = signedData?.signedUrl || publicUrl;
+
+        setProgress(`Queued ${i + 1} of ${selectedFiles.length} for analysis...`);
+
+        // Save a pending record to the database so a background worker can analyze it later
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
             user_id: user.id,
             photo_url: publicUrl,
             storage_path: fileName,
-            analysis: analysis,
+            analysis: null,
             prompt_type: promptType,
-            file_name: file.name
+            file_name: file.name,
+            status: 'pending',
+            analysis_started_at: null,
+            analysis_finished_at: null,
+            processor: null
           })
           .select()
           .single();

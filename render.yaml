@@ -3,24 +3,24 @@
 
 services:
   - type: web
-    name: artassist
-    runtime: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    name: artassist-web
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
     envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_SERVICE_ROLE
+      - key: OPENAI_API_KEY
       - key: VITE_SUPABASE_URL
-        sync: false
       - key: VITE_SUPABASE_ANON_KEY
-        sync: false
-      - key: VITE_OPENAI_API_KEY
-        sync: false
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: X-XSS-Protection
-        value: 1; mode=block
+  - type: worker
+    name: artassist-worker
+    env: node
+    plan: free
+    startCommand: npm run worker
+    envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_SERVICE_ROLE
+      - key: OPENAI_API_KEY
+      - key: WORKER_POLL_INTERVAL
