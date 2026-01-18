@@ -10,10 +10,15 @@ services:
     startCommand: npm run start
     envVars:
       - key: SUPABASE_URL
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: SUPABASE_SERVICE_ROLE
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: OPENAI_API_KEY
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: VITE_SUPABASE_URL
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: VITE_SUPABASE_ANON_KEY
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
   - type: worker
     name: artassist-worker
     env: node
@@ -21,6 +26,10 @@ services:
     startCommand: npm run worker
     envVars:
       - key: SUPABASE_URL
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: SUPABASE_SERVICE_ROLE
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: OPENAI_API_KEY
+        value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: WORKER_POLL_INTERVAL
+        value: "8000"
