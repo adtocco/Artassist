@@ -93,7 +93,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
         analysis_finished_at: null,
         error_message: null,
         processor: null,
-        updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase
