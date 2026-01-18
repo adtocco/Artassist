@@ -2,8 +2,7 @@ Blueprint: Deploy ArtAssist on Render (Frontend + Backend + Worker)
 
 Overview
 - Frontend: Vite React app (build -> `dist`), served by Node web service here (or could be Static Site)
-- Backend: `server/index.js` - exposes /api/process/:id and basic health endpoint
-- Worker: `server/worker.js` - polls `photo_analyses` and processes pending items
+- Backend: `server/index.js` - exposes `/api/process/:id` and basic health endpoint; processing is triggered synchronously after upload.
 
 Required environment variables (set in Render dashboard):
 - SUPABASE_URL: your Supabase project URL
@@ -15,8 +14,7 @@ Required environment variables (set in Render dashboard):
 
 Files added by blueprint:
 - `server/index.js` - Express web service
-- `server/processor.js` - processing logic (used by server + worker)
-- `server/worker.js` - background worker polling/pipeline
+- `server/processor.js` - processing logic (used by server)
 - `render.yaml` - Render services definitions
 
 Database changes
@@ -39,16 +37,19 @@ ALTER TABLE photo_analyses
 Deploy steps (Render)
 1. Push your repo to GitHub.
 2. On Render, create a new service by connecting your GitHub repo and using `render.yaml` (Auto-deploy).
-3. In Render dashboard, confirm both services (web + worker) are created, then set the environment variables listed above.
-4. Deploy. The web service will build and start; the worker will start polling and processing.
+3. In Render dashboard, create the web service and set the environment variables listed above.
+4. Deploy. The web service will build and start; after uploads the server will process images immediately.
 
 Local testing
 - Run frontend-only during development:
   npm run dev
 - Run server locally (requires env vars):
   SUPABASE_URL=... SUPABASE_SERVICE_ROLE=... OPENAI_API_KEY=... npm run start
-- Run worker locally:
-  SUPABASE_URL=... SUPABASE_SERVICE_ROLE=... OPENAI_API_KEY=... npm run worker
+Local testing
+- Run frontend-only during development:
+  npm run dev
+- Run server locally (requires env vars):
+  SUPABASE_URL=... SUPABASE_SERVICE_ROLE=... OPENAI_API_KEY=... npm run start
 
 Notes & security
 - Never store `SUPABASE_SERVICE_ROLE` or `OPENAI_API_KEY` in the frontend or public repos.

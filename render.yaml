@@ -19,9 +19,4 @@ services:
         value: "<SET_IN_DASHBOARD_or_REMOVE>"
       - key: VITE_SUPABASE_ANON_KEY
         value: "<SET_IN_DASHBOARD_or_REMOVE>"
-      - key: RUN_WORKER_IN_WEB
-        value: "false"
-  # If your Render plan does not support separate worker services, you can run the
-  # worker inside the same web service container by setting RUN_WORKER_IN_WEB=true
-  # in the web service envVars below. Remove the standalone worker service if you
-  # prefer that mode.
+      # (no worker service required; server processes images synchronously after upload)
