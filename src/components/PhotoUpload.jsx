@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { analyzePhoto } from '../lib/openai';
 import './PhotoUpload.css';
 
 export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
@@ -77,16 +78,20 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
         if (dbError) throw dbError;
         results.push(dbData);
 
-        // Trigger immediate processing on the server so no external worker is required
+        // Immediately analyze the uploaded image on the client and update DB
         try {
-          setProgress(`Processing ${i + 1} of ${selectedFiles.length}...`);
-          await fetch(`/api/process/${dbData.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lang })
-          });
+          setProgress(`Analyzing ${i + 1} of ${selectedFiles.length}...`);
+          const analysisText = await analyzePhoto(urlToAnalyze, promptType, lang);
+
+          const { error: updateErr } = await supabase
+            .from('photo_analyses')
+            .update({ status: 'done', analysis: analysisText, analysis_finished_at: new Date().toISOString(), processor: 'client' })
+            .eq('id', dbData.id);
+
+          if (updateErr) throw updateErr;
         } catch (procErr) {
-          console.warn('Failed to trigger server processing:', procErr);
+          console.error('Client analysis failed:', procErr);
+          await supabase.from('photo_analyses').update({ status: 'error', error_message: procErr.message }).eq('id', dbData.id);
         }
       }
 
