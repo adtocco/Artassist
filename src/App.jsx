@@ -5,7 +5,6 @@ import PhotoUpload from './components/PhotoUpload';
 import PhotoGallery from './components/PhotoGallery';
 import AnalysisQueue from './components/AnalysisQueue';
 import './App.css';
-import { supabase } from './lib/supabase';
 import { analyzePhoto } from './lib/openai';
 
 function App() {
