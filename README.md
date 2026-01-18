@@ -129,6 +129,8 @@ Quick steps:
 3. Have the frontend call your backend API instead
 4. Never expose API keys in the frontend code
 
+See [PRODUCTION_NOTES.md](./PRODUCTION_NOTES.md) for detailed production considerations, improvements, and migration strategies.
+
 ## Project Structure
 
 ```

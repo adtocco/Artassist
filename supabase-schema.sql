@@ -1,8 +1,7 @@
 -- ArtAssist Database Schema for Supabase
 -- Run this SQL in your Supabase SQL Editor
 
--- Enable Row Level Security
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
+-- Note: Supabase handles JWT secrets automatically - no need to set them manually
 
 -- Create photos storage bucket
 INSERT INTO storage.buckets (id, name, public)
