@@ -98,25 +98,20 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
       // Re-analyze with OpenAI
       const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type, lang);
 
-      // Update in database
-      const { error } = await supabase
+      // Update in database and get the updated row back
+      const { data: updatedPhoto, error } = await supabase
         .from('photo_analyses')
         .update({
           analysis: analysisResult.analysis,
           photo_name: analysisResult.name
         })
-        .eq('id', photo.id);
+        .eq('id', photo.id)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Build updated photo object
-      const updatedPhoto = {
-        ...photo,
-        analysis: analysisResult.analysis,
-        photo_name: analysisResult.name
-      };
-
-      // Update local state
+      // Update local state with the data from database
       setPhotos(photos.map(p => p.id === photo.id ? updatedPhoto : p));
       if (selectedPhoto?.id === photo.id) {
         setSelectedPhoto(updatedPhoto);
