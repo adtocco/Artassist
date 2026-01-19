@@ -150,9 +150,12 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr')
 
 export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') {
   try {
-    const analysisTexts = analyses.map((a, i) => 
-      `Photo ${i + 1}: ${a.analysis}`
-    ).join('\n\n');
+    const analysisTexts = analyses.map((a) => {
+      const name = a.photo_name || 'Sans titre';
+      return `"${name}": ${a.analysis}`;
+    }).join('\n\n');
+
+    const photoNames = analyses.map(a => a.photo_name || 'Sans titre').join(', ');
 
     const languageNote = lang && lang !== 'en' ? `Veuillez répondre en ${lang === 'fr' ? 'français' : lang}.` : 'Please respond in English.';
 
@@ -162,16 +165,20 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') 
           : `Additional instructions for the series analysis: ${instructions}`)
       : '';
 
+    const namingInstruction = lang === 'fr'
+      ? `IMPORTANT: Utilisez TOUJOURS les noms des photos (${photoNames}) pour les identifier dans vos recommandations, jamais "Photo 1", "Photo 2", etc.`
+      : `IMPORTANT: ALWAYS use the photo names (${photoNames}) to identify them in your recommendations, never "Photo 1", "Photo 2", etc.`;
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.\n\n${languageNote}`
+          content: `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.\n\n${namingInstruction}\n\n${languageNote}`
         },
         {
           role: "user",
-          content: `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires.`
+          content: `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos)\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom.`
         }
       ],
       max_tokens: 1500

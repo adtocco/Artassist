@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import './Auth.css';
 
@@ -7,8 +7,25 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isResetPassword, setIsResetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('info'); // 'info', 'success', 'error'
   const [devLoggedIn, setDevLoggedIn] = useState(false);
+
+  // Check if we're coming back from a password reset link
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const type = hashParams.get('type');
+    
+    if (type === 'recovery') {
+      setIsResetPassword(true);
+      setMessage('Entrez votre nouveau mot de passe');
+      setMessageType('info');
+    }
+  }, []);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -19,16 +36,86 @@ export default function Auth() {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        setMessage('Check your email for the confirmation link!');
+        setMessage('Vérifiez votre email pour le lien de confirmation !');
+        setMessageType('success');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (error) {
       setMessage(error.message);
+      setMessageType('error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/#type=recovery`,
+      });
+      if (error) throw error;
+      setMessage('Un email de réinitialisation a été envoyé ! Vérifiez votre boîte de réception.');
+      setMessageType('success');
+    } catch (error) {
+      setMessage(error.message);
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    if (newPassword !== confirmPassword) {
+      setMessage('Les mots de passe ne correspondent pas');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setMessage('Le mot de passe doit contenir au moins 6 caractères');
+      setMessageType('error');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setMessage('Mot de passe mis à jour avec succès ! Vous allez être connecté...');
+      setMessageType('success');
+      // Clear the hash from URL
+      window.history.replaceState(null, '', window.location.pathname);
+      setTimeout(() => {
+        setIsResetPassword(false);
+        window.location.reload();
+      }, 2000);
+    } catch (error) {
+      setMessage(error.message);
+      setMessageType('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const backToLogin = () => {
+    setIsForgotPassword(false);
+    setIsResetPassword(false);
+    setMessage('');
+    setEmail('');
+    setPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   // Dev login bypass
@@ -76,37 +163,113 @@ export default function Auth() {
 
         {!devLoggedIn ? (
           <>
-            <form onSubmit={handleAuth} className="auth-form">
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+            {/* Reset Password Form (when coming from email link) */}
+            {isResetPassword ? (
+              <form onSubmit={handleResetPassword} className="auth-form">
+                <input
+                  type="password"
+                  placeholder="Nouveau mot de passe"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  minLength={6}
+                />
+                <input
+                  type="password"
+                  placeholder="Confirmer le mot de passe"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  minLength={6}
+                />
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
+                </button>
+              </form>
+            ) : isForgotPassword ? (
+              /* Forgot Password Form */
+              <form onSubmit={handleForgotPassword} className="auth-form">
+                <input
+                  type="email"
+                  placeholder="Votre email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Envoi...' : 'Envoyer le lien de réinitialisation'}
+                </button>
+              </form>
+            ) : (
+              /* Normal Login/Signup Form */
+              <form onSubmit={handleAuth} className="auth-form">
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+                </button>
+              </form>
+            )}
+
+            {message && (
+              <p className={`auth-message ${messageType}`}>{message}</p>
+            )}
+
+            {/* Navigation buttons */}
+            {isResetPassword ? (
+              <button 
+                className="toggle-auth"
+                onClick={backToLogin}
                 disabled={loading}
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-              <button type="submit" disabled={loading}>
-                {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+              >
+                Retour à la connexion
               </button>
-            </form>
+            ) : isForgotPassword ? (
+              <button 
+                className="toggle-auth"
+                onClick={backToLogin}
+                disabled={loading}
+              >
+                Retour à la connexion
+              </button>
+            ) : (
+              <>
+                <button 
+                  className="toggle-auth"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  disabled={loading}
+                >
+                  {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+                </button>
 
-            {message && <p className="auth-message">{message}</p>}
-
-            <button 
-              className="toggle-auth"
-              onClick={() => setIsSignUp(!isSignUp)}
-              disabled={loading}
-            >
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-            </button>
+                {!isSignUp && (
+                  <button 
+                    className="toggle-auth forgot-password"
+                    onClick={() => setIsForgotPassword(true)}
+                    disabled={loading}
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                )}
+              </>
+            )}
 
             <button
               className="dev-auth"

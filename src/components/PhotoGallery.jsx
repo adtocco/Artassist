@@ -124,6 +124,24 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     }
   };
 
+  // Helper function to extract score from analysis JSON
+  const getScore = (photo) => {
+    try {
+      const analysis = JSON.parse(photo.analysis);
+      return analysis.score || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper function to get score color based on value
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'score-excellent';
+    if (score >= 60) return 'score-good';
+    if (score >= 40) return 'score-average';
+    return 'score-low';
+  };
+
   if (loading) {
     return <div className="loading">Loading your photos...</div>;
   }
@@ -162,7 +180,21 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
 
       {seriesRecommendation && (
         <div className="series-recommendation">
-          <h3>📊 Collection Analysis & Series Recommendations</h3>
+          <h3>📊 {lang === 'fr' ? 'Analyse de la collection & Recommandations de série' : 'Collection Analysis & Series Recommendations'}</h3>
+          
+          {/* Photo reference bar */}
+          <div className="series-photos-reference">
+            <h4>{lang === 'fr' ? 'Vos photos :' : 'Your photos:'}</h4>
+            <div className="series-photos-grid">
+              {photos.map((photo) => (
+                <div key={photo.id} className="series-photo-thumb" title={photo.photo_name || photo.file_name}>
+                  <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
+                  <span className="series-photo-name">{photo.photo_name || 'Sans titre'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="recommendation-content">
             {seriesRecommendation.split('\n').map((line, idx) => (
               <p key={idx}>{line}</p>
@@ -172,7 +204,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
             onClick={() => setSeriesRecommendation(null)}
             className="close-recommendation"
           >
-            Close
+            {lang === 'fr' ? 'Fermer' : 'Close'}
           </button>
         </div>
       )}
@@ -188,6 +220,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
               <div className="reanalyze-overlay">
                 <div className="reanalyze-spinner"></div>
                 <span>{lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...'}</span>
+              </div>
+            )}
+            {getScore(photo) !== null && (
+              <div className={`photo-score ${getScoreColor(getScore(photo))}`}>
+                {getScore(photo)}
               </div>
             )}
             {photo.photo_name && (
