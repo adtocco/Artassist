@@ -3,6 +3,8 @@ import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
 import PhotoUpload from './components/PhotoUpload';
 import PhotoGallery from './components/PhotoGallery';
+import SavedSeries from './components/SavedSeries';
+import SharedSeries from './components/SharedSeries';
 import './App.css';
 
 function App() {
@@ -10,6 +12,17 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lang, setLang] = useState('fr');
+  const [activeTab, setActiveTab] = useState('gallery');
+
+  // Check if we're on a share URL
+  const path = window.location.pathname;
+  const shareMatch = path.match(/^\/share\/([a-f0-9]+)$/);
+  const shareToken = shareMatch ? shareMatch[1] : null;
+
+  // If share URL, show public view without auth
+  if (shareToken) {
+    return <SharedSeries shareToken={shareToken} />;
+  }
 
   useEffect(() => {
     // Get initial session
@@ -74,9 +87,30 @@ function App() {
         </div>
       </header>
 
+      <nav className="app-nav">
+        <button 
+          className={`nav-tab ${activeTab === 'gallery' ? 'active' : ''}`}
+          onClick={() => setActiveTab('gallery')}
+        >
+          📸 {lang === 'fr' ? 'Mes Photos' : 'My Photos'}
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'saved' ? 'active' : ''}`}
+          onClick={() => setActiveTab('saved')}
+        >
+          📁 {lang === 'fr' ? 'Séries Sauvegardées' : 'Saved Series'}
+        </button>
+      </nav>
+
       <main className="app-main">
-        <PhotoUpload onPhotoAnalyzed={handlePhotoAnalyzed} lang={lang} />
-        <PhotoGallery refreshTrigger={refreshTrigger} lang={lang} />
+        {activeTab === 'gallery' ? (
+          <>
+            <PhotoUpload onPhotoAnalyzed={handlePhotoAnalyzed} lang={lang} />
+            <PhotoGallery refreshTrigger={refreshTrigger} lang={lang} />
+          </>
+        ) : (
+          <SavedSeries lang={lang} />
+        )}
       </main>
 
       <footer className="app-footer">

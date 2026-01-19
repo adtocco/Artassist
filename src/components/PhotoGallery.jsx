@@ -3,6 +3,67 @@ import { supabase } from '../lib/supabase';
 import { findPhotoSeries, analyzePhoto } from '../lib/openai';
 import './PhotoGallery.css';
 
+// Simple Markdown renderer for images and text
+function renderMarkdown(text) {
+  if (!text) return null;
+  
+  const lines = text.split('\n');
+  const elements = [];
+  
+  lines.forEach((line, idx) => {
+    // Match markdown images: ![alt](url)
+    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = imageRegex.exec(line)) !== null) {
+      // Add text before the image
+      if (match.index > lastIndex) {
+        parts.push(<span key={`text-${idx}-${lastIndex}`}>{line.slice(lastIndex, match.index)}</span>);
+      }
+      // Add the image
+      parts.push(
+        <img 
+          key={`img-${idx}-${match.index}`} 
+          src={match[2]} 
+          alt={match[1]} 
+          className="markdown-image"
+          loading="lazy"
+        />
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining text after last image
+    if (lastIndex < line.length) {
+      parts.push(<span key={`text-${idx}-${lastIndex}`}>{line.slice(lastIndex)}</span>);
+    }
+    
+    // Handle headers
+    if (line.startsWith('### ')) {
+      elements.push(<h4 key={idx}>{line.slice(4)}</h4>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h3 key={idx}>{line.slice(3)}</h3>);
+    } else if (line.startsWith('# ')) {
+      elements.push(<h2 key={idx}>{line.slice(2)}</h2>);
+    } else if (line.startsWith('**') && line.endsWith('**')) {
+      elements.push(<p key={idx}><strong>{line.slice(2, -2)}</strong></p>);
+    } else if (parts.length > 0) {
+      elements.push(<p key={idx} className="markdown-line">{parts}</p>);
+    } else if (line.trim() === '') {
+      elements.push(<br key={idx} />);
+    } else {
+      // Handle bold text within line
+      const boldRegex = /\*\*([^*]+)\*\*/g;
+      const formattedLine = line.replace(boldRegex, '<strong>$1</strong>');
+      elements.push(<p key={idx} dangerouslySetInnerHTML={{ __html: formattedLine }} />);
+    }
+  });
+  
+  return elements;
+}
+
 export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +72,9 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [analyzingSeries, setAnalyzingSeries] = useState(false);
   const [seriesInstructions, setSeriesInstructions] = useState('');
   const [reanalyzingId, setReanalyzingId] = useState(null);
+  const [savingAnalysis, setSavingAnalysis] = useState(false);
+  const [seriesTitle, setSeriesTitle] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   useEffect(() => {
     fetchPhotos();
@@ -50,6 +114,55 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
       alert('Error analyzing photo series: ' + err.message);
     } finally {
       setAnalyzingSeries(false);
+    }
+  };
+
+  const saveSeriesAnalysis = async (makePublic = false) => {
+    if (!seriesTitle.trim()) {
+      alert(lang === 'fr' ? 'Veuillez donner un titre à cette analyse' : 'Please provide a title for this analysis');
+      return;
+    }
+
+    setSavingAnalysis(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Generate share token if public
+      const shareToken = makePublic ? crypto.randomUUID().replace(/-/g, '').substring(0, 32) : null;
+      
+      const { data, error } = await supabase
+        .from('series_analyses')
+        .insert({
+          user_id: user.id,
+          title: seriesTitle.trim(),
+          analysis: seriesRecommendation,
+          photo_ids: photos.map(p => p.id),
+          instructions: seriesInstructions || null,
+          is_public: makePublic,
+          share_token: shareToken
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setShowSaveDialog(false);
+      setSeriesTitle('');
+      
+      if (makePublic && data.share_token) {
+        const shareUrl = `${window.location.origin}/share/${data.share_token}`;
+        await navigator.clipboard.writeText(shareUrl);
+        alert(lang === 'fr' 
+          ? `Analyse sauvegardée ! Le lien de partage a été copié dans le presse-papier :\n${shareUrl}` 
+          : `Analysis saved! Share link copied to clipboard:\n${shareUrl}`);
+      } else {
+        alert(lang === 'fr' ? 'Analyse sauvegardée avec succès !' : 'Analysis saved successfully!');
+      }
+    } catch (err) {
+      console.error('Error saving series analysis:', err);
+      alert(lang === 'fr' ? 'Erreur lors de la sauvegarde : ' + err.message : 'Error saving: ' + err.message);
+    } finally {
+      setSavingAnalysis(false);
     }
   };
 
@@ -124,24 +237,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
     }
   };
 
-  // Helper function to extract score from analysis JSON
-  const getScore = (photo) => {
-    try {
-      const analysis = JSON.parse(photo.analysis);
-      return analysis.score || null;
-    } catch {
-      return null;
-    }
-  };
-
-  // Helper function to get score color based on value
-  const getScoreColor = (score) => {
-    if (score >= 80) return 'score-excellent';
-    if (score >= 60) return 'score-good';
-    if (score >= 40) return 'score-average';
-    return 'score-low';
-  };
-
   if (loading) {
     return <div className="loading">Loading your photos...</div>;
   }
@@ -180,32 +275,64 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
 
       {seriesRecommendation && (
         <div className="series-recommendation">
-          <h3>📊 {lang === 'fr' ? 'Analyse de la collection & Recommandations de série' : 'Collection Analysis & Series Recommendations'}</h3>
-          
-          {/* Photo reference bar */}
-          <div className="series-photos-reference">
-            <h4>{lang === 'fr' ? 'Vos photos :' : 'Your photos:'}</h4>
-            <div className="series-photos-grid">
-              {photos.map((photo) => (
-                <div key={photo.id} className="series-photo-thumb" title={photo.photo_name || photo.file_name}>
-                  <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
-                  <span className="series-photo-name">{photo.photo_name || 'Sans titre'}</span>
-                </div>
-              ))}
+          <h3>📊 Collection Analysis & Series Recommendations</h3>
+          <div className="recommendation-content markdown-content">
+            {renderMarkdown(seriesRecommendation)}
+          </div>
+          <div className="series-actions">
+            <button 
+              onClick={() => setShowSaveDialog(true)}
+              className="save-series-button"
+              disabled={savingAnalysis}
+            >
+              💾 {lang === 'fr' ? 'Sauvegarder' : 'Save'}
+            </button>
+            <button 
+              onClick={() => setSeriesRecommendation(null)}
+              className="close-recommendation"
+            >
+              {lang === 'fr' ? 'Fermer' : 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Save Dialog Modal */}
+      {showSaveDialog && (
+        <div className="modal-overlay" onClick={() => setShowSaveDialog(false)}>
+          <div className="save-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>{lang === 'fr' ? 'Sauvegarder l\'analyse de série' : 'Save Series Analysis'}</h3>
+            <input
+              type="text"
+              placeholder={lang === 'fr' ? 'Titre de l\'analyse...' : 'Analysis title...'}
+              value={seriesTitle}
+              onChange={(e) => setSeriesTitle(e.target.value)}
+              className="series-title-input"
+              autoFocus
+            />
+            <div className="save-dialog-buttons">
+              <button
+                onClick={() => saveSeriesAnalysis(false)}
+                disabled={savingAnalysis || !seriesTitle.trim()}
+                className="save-private-button"
+              >
+                🔒 {lang === 'fr' ? 'Sauvegarder (privé)' : 'Save (private)'}
+              </button>
+              <button
+                onClick={() => saveSeriesAnalysis(true)}
+                disabled={savingAnalysis || !seriesTitle.trim()}
+                className="save-public-button"
+              >
+                🔗 {lang === 'fr' ? 'Sauvegarder & Partager' : 'Save & Share'}
+              </button>
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="cancel-button"
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
             </div>
           </div>
-
-          <div className="recommendation-content">
-            {seriesRecommendation.split('\n').map((line, idx) => (
-              <p key={idx}>{line}</p>
-            ))}
-          </div>
-          <button 
-            onClick={() => setSeriesRecommendation(null)}
-            className="close-recommendation"
-          >
-            {lang === 'fr' ? 'Fermer' : 'Close'}
-          </button>
         </div>
       )}
 
@@ -220,11 +347,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
               <div className="reanalyze-overlay">
                 <div className="reanalyze-spinner"></div>
                 <span>{lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...'}</span>
-              </div>
-            )}
-            {getScore(photo) !== null && (
-              <div className={`photo-score ${getScoreColor(getScore(photo))}`}>
-                {getScore(photo)}
               </div>
             )}
             {photo.photo_name && (
