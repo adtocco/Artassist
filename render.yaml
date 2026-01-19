@@ -10,13 +10,16 @@ services:
     startCommand: npm run start
     envVars:
       - key: SUPABASE_URL
-        value: "<SET_IN_DASHBOARD_or_REMOVE>"
+        sync: false
       - key: SUPABASE_SERVICE_ROLE
-        value: "<SET_IN_DASHBOARD_or_REMOVE>"
+        sync: false
       - key: OPENAI_API_KEY
-        value: "<SET_IN_DASHBOARD_or_REMOVE>"
+        sync: false
       - key: VITE_SUPABASE_URL
-        value: "<SET_IN_DASHBOARD_or_REMOVE>"
+        sync: false
       - key: VITE_SUPABASE_ANON_KEY
-        value: "<SET_IN_DASHBOARD_or_REMOVE>"
-      # (no worker service required; server processes images synchronously after upload)
+        sync: false
+      - key: VITE_OPENAI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
