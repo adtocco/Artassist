@@ -55,22 +55,22 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
 
         const urlToAnalyze = signedData?.signedUrl || publicUrl;
 
-        setProgress(`Queued ${i + 1} of ${selectedFiles.length} for analysis...`);
+        setProgress(`Analyzing ${i + 1} of ${selectedFiles.length}...`);
 
-        // Save a pending record to the database so a background worker can analyze it later
+        // Analyze with OpenAI (pass selected language). Use signed URL when possible to avoid timeouts.
+        const analysisResult = await analyzePhoto(urlToAnalyze, promptType, lang);
+
+        // Save to database (now includes photo_name from AI)
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
             user_id: user.id,
             photo_url: publicUrl,
             storage_path: fileName,
-            analysis: null,
+            analysis: analysisResult.analysis,
+            photo_name: analysisResult.name,
             prompt_type: promptType,
-            file_name: file.name,
-            status: 'pending',
-            analysis_started_at: null,
-            analysis_finished_at: null,
-            processor: null
+            file_name: file.name
           })
           .select()
           .single();
