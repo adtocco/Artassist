@@ -1,16 +1,36 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
+import { analyzePhoto } from '../lib/openai';
 import './Collections.css';
 
-export default function Collections({ lang = 'fr', onSelectCollection }) {
+const ANALYSIS_TYPES = [
+  { value: 'general', labelFr: 'Analyse générale', labelEn: 'General analysis' },
+  { value: 'series', labelFr: 'Analyse de série', labelEn: 'Series analysis' },
+  { value: 'technique', labelFr: 'Technique artistique', labelEn: 'Artistic technique' },
+  { value: 'composition', labelFr: 'Composition', labelEn: 'Composition' },
+  { value: 'color', labelFr: 'Palette de couleurs', labelEn: 'Color palette' },
+  { value: 'style', labelFr: 'Style et influences', labelEn: 'Style and influences' },
+  { value: 'custom', labelFr: 'Personnalisé', labelEn: 'Custom' },
+];
+
+export default function Collections({ lang = 'fr', onSelectCollection, onRefresh }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  const [newAnalysisType, setNewAnalysisType] = useState('general');
+  const [newAnalysisInstructions, setNewAnalysisInstructions] = useState('');
   const [creating, setCreating] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [editingCollection, setEditingCollection] = useState(null);
+  const [showAddPhotosDialog, setShowAddPhotosDialog] = useState(null); // collection to add photos to
+  const [availablePhotos, setAvailablePhotos] = useState([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState(new Set());
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [addingPhotos, setAddingPhotos] = useState(false);
+  const [addProgress, setAddProgress] = useState('');
 
   useEffect(() => {
     fetchCollections();
@@ -20,12 +40,12 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Fetch collections with photo count
+      // Fetch collections with photo count from collection_photos junction table
       const { data, error } = await supabase
         .from('collections')
         .select(`
           *,
-          photo_count:photo_analyses(count)
+          photo_count:collection_photos(count)
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -42,14 +62,23 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
             .single();
           return { ...collection, cover_photo: coverPhoto };
         }
-        // If no cover, get first photo from collection
-        const { data: firstPhoto } = await supabase
-          .from('photo_analyses')
-          .select('photo_url, photo_name')
+        // If no cover, get first photo from collection via collection_photos
+        const { data: firstCollectionPhoto } = await supabase
+          .from('collection_photos')
+          .select('photo_id')
           .eq('collection_id', collection.id)
           .limit(1)
           .single();
-        return { ...collection, cover_photo: firstPhoto };
+        
+        if (firstCollectionPhoto?.photo_id) {
+          const { data: firstPhoto } = await supabase
+            .from('photo_analyses')
+            .select('photo_url, photo_name')
+            .eq('id', firstCollectionPhoto.photo_id)
+            .single();
+          return { ...collection, cover_photo: firstPhoto };
+        }
+        return { ...collection, cover_photo: null };
       }));
 
       setCollections(collectionsWithCovers);
@@ -72,7 +101,9 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
         .insert({
           user_id: user.id,
           name: newCollectionName.trim(),
-          description: newCollectionDescription.trim() || null
+          description: newCollectionDescription.trim() || null,
+          analysis_type: newAnalysisType,
+          analysis_instructions: newAnalysisType === 'custom' ? newAnalysisInstructions.trim() : null
         })
         .select()
         .single();
@@ -82,6 +113,8 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
       setCollections([{ ...data, photo_count: [{ count: 0 }] }, ...collections]);
       setNewCollectionName('');
       setNewCollectionDescription('');
+      setNewAnalysisType('general');
+      setNewAnalysisInstructions('');
       setShowCreateDialog(false);
     } catch (err) {
       console.error('Error creating collection:', err);
@@ -100,6 +133,9 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
         .update({
           name: editingCollection.name.trim(),
           description: editingCollection.description?.trim() || null,
+          analysis_type: editingCollection.analysis_type || 'general',
+          analysis_instructions: editingCollection.analysis_type === 'custom' 
+            ? editingCollection.analysis_instructions?.trim() : null,
           updated_at: new Date().toISOString()
         })
         .eq('id', editingCollection.id)
@@ -137,6 +173,126 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
       }
     } catch (err) {
       console.error('Error deleting collection:', err);
+    }
+  };
+
+  const openAddPhotosDialog = async (collection) => {
+    setShowAddPhotosDialog(collection);
+    setSelectedPhotoIds(new Set());
+    setLoadingPhotos(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // First get photo IDs already in this collection
+      const { data: existingPhotos } = await supabase
+        .from('collection_photos')
+        .select('photo_id')
+        .eq('collection_id', collection.id);
+      
+      const existingPhotoIds = (existingPhotos || []).map(p => p.photo_id);
+      
+      // Fetch all user photos
+      let query = supabase
+        .from('photo_analyses')
+        .select('id, photo_url, photo_name, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      // Exclude photos already in the collection
+      if (existingPhotoIds.length > 0) {
+        query = query.not('id', 'in', `(${existingPhotoIds.join(',')})`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setAvailablePhotos(data || []);
+    } catch (err) {
+      console.error('Error fetching available photos:', err);
+    } finally {
+      setLoadingPhotos(false);
+    }
+  };
+
+  const togglePhotoSelection = (photoId) => {
+    const newSelection = new Set(selectedPhotoIds);
+    if (newSelection.has(photoId)) {
+      newSelection.delete(photoId);
+    } else {
+      newSelection.add(photoId);
+    }
+    setSelectedPhotoIds(newSelection);
+  };
+
+  const addPhotosToCollection = async () => {
+    console.log('addPhotosToCollection called', { selectedPhotoIds: selectedPhotoIds.size, showAddPhotosDialog });
+    
+    if (selectedPhotoIds.size === 0 || !showAddPhotosDialog) {
+      console.log('Early return - no photos selected or no dialog');
+      return;
+    }
+    
+    const collection = showAddPhotosDialog;
+    setAddingPhotos(true);
+    setAddProgress(lang === 'fr' ? 'Ajout en cours...' : 'Adding...');
+    
+    try {
+      // Get selected photos data for analysis
+      const selectedPhotosData = availablePhotos.filter(p => selectedPhotoIds.has(p.id));
+      console.log('Selected photos data:', selectedPhotosData);
+      
+      for (let i = 0; i < selectedPhotosData.length; i++) {
+        const photo = selectedPhotosData[i];
+        setAddProgress(`${lang === 'fr' ? 'Ajout' : 'Adding'} ${i + 1}/${selectedPhotosData.length}...`);
+        
+        let analysis = null;
+        
+        // If collection has a specific analysis type, run analysis
+        if (collection.analysis_type && collection.analysis_type !== 'general') {
+          try {
+            const collectionAnalysis = {
+              type: collection.analysis_type,
+              instructions: collection.analysis_instructions
+            };
+            
+            const analysisResult = await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis);
+            analysis = analysisResult.analysis;
+          } catch (analysisErr) {
+            console.error('Error analyzing photo for collection:', analysisErr);
+            // Continue without analysis if it fails
+          }
+        }
+        
+        // Insert into collection_photos junction table
+        console.log('Inserting into collection_photos:', { collection_id: collection.id, photo_id: photo.id });
+        const { error } = await supabase
+          .from('collection_photos')
+          .insert({
+            collection_id: collection.id,
+            photo_id: photo.id,
+            analysis: analysis,
+            analysis_type: collection.analysis_type
+          });
+
+        if (error) {
+          console.error('Supabase insert error:', error);
+          throw error;
+        }
+      }
+
+      setShowAddPhotosDialog(null);
+      setSelectedPhotoIds(new Set());
+      setAvailablePhotos([]);
+      setAddProgress('');
+      fetchCollections(); // Refresh to update photo counts
+      onRefresh?.(); // Refresh gallery
+    } catch (err) {
+      console.error('Error adding photos to collection:', err);
+      alert(lang === 'fr' ? `Erreur: ${err.message || err}` : `Error: ${err.message || err}`);
+    } finally {
+      setAddingPhotos(false);
+      setAddProgress('');
     }
   };
 
@@ -213,6 +369,13 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
             </div>
             <div className="collection-actions" onClick={(e) => e.stopPropagation()}>
               <button 
+                className="add-photos-btn"
+                onClick={() => openAddPhotosDialog(collection)}
+                title={lang === 'fr' ? 'Ajouter des photos' : 'Add photos'}
+              >
+                ➕
+              </button>
+              <button 
                 className="edit-btn"
                 onClick={() => setEditingCollection({ ...collection })}
                 title={lang === 'fr' ? 'Modifier' : 'Edit'}
@@ -232,7 +395,7 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
       </div>
 
       {/* Create Collection Dialog */}
-      {showCreateDialog && (
+      {showCreateDialog && createPortal(
         <div className="modal-overlay" onClick={() => setShowCreateDialog(false)}>
           <div className="collection-dialog" onClick={(e) => e.stopPropagation()}>
             <h3>{lang === 'fr' ? 'Nouvelle collection' : 'New Collection'}</h3>
@@ -249,6 +412,29 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
               onChange={(e) => setNewCollectionDescription(e.target.value)}
               rows={2}
             />
+            <label className="form-label">
+              {lang === 'fr' ? "Type d'analyse" : 'Analysis type'}
+            </label>
+            <select 
+              value={newAnalysisType}
+              onChange={(e) => setNewAnalysisType(e.target.value)}
+              className="analysis-type-select"
+            >
+              {ANALYSIS_TYPES.map(type => (
+                <option key={type.value} value={type.value}>
+                  {lang === 'fr' ? type.labelFr : type.labelEn}
+                </option>
+              ))}
+            </select>
+            {newAnalysisType === 'custom' && (
+              <textarea
+                placeholder={lang === 'fr' ? 'Instructions personnalisées pour l\'analyse...' : 'Custom analysis instructions...'}
+                value={newAnalysisInstructions}
+                onChange={(e) => setNewAnalysisInstructions(e.target.value)}
+                rows={3}
+                className="custom-instructions"
+              />
+            )}
             <div className="dialog-buttons">
               <button 
                 onClick={createCollection}
@@ -262,11 +448,12 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Collection Dialog */}
-      {editingCollection && (
+      {editingCollection && createPortal(
         <div className="modal-overlay" onClick={() => setEditingCollection(null)}>
           <div className="collection-dialog" onClick={(e) => e.stopPropagation()}>
             <h3>{lang === 'fr' ? 'Modifier la collection' : 'Edit Collection'}</h3>
@@ -283,6 +470,29 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
               onChange={(e) => setEditingCollection({ ...editingCollection, description: e.target.value })}
               rows={2}
             />
+            <label className="form-label">
+              {lang === 'fr' ? "Type d'analyse" : 'Analysis type'}
+            </label>
+            <select 
+              value={editingCollection.analysis_type || 'general'}
+              onChange={(e) => setEditingCollection({ ...editingCollection, analysis_type: e.target.value })}
+              className="analysis-type-select"
+            >
+              {ANALYSIS_TYPES.map(type => (
+                <option key={type.value} value={type.value}>
+                  {lang === 'fr' ? type.labelFr : type.labelEn}
+                </option>
+              ))}
+            </select>
+            {editingCollection.analysis_type === 'custom' && (
+              <textarea
+                placeholder={lang === 'fr' ? 'Instructions personnalisées pour l\'analyse...' : 'Custom analysis instructions...'}
+                value={editingCollection.analysis_instructions || ''}
+                onChange={(e) => setEditingCollection({ ...editingCollection, analysis_instructions: e.target.value })}
+                rows={3}
+                className="custom-instructions"
+              />
+            )}
             <div className="dialog-buttons">
               <button 
                 onClick={updateCollection}
@@ -296,7 +506,81 @@ export default function Collections({ lang = 'fr', onSelectCollection }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Photos to Collection Dialog */}
+      {showAddPhotosDialog && createPortal(
+        <div className="modal-overlay" onClick={() => setShowAddPhotosDialog(null)}>
+          <div className="collection-dialog add-photos-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              {lang === 'fr' 
+                ? `Ajouter des photos à "${showAddPhotosDialog.name}"` 
+                : `Add photos to "${showAddPhotosDialog.name}"`}
+            </h3>
+            {loadingPhotos ? (
+              <div className="loading-photos">
+                {lang === 'fr' ? 'Chargement...' : 'Loading...'}
+              </div>
+            ) : availablePhotos.length === 0 ? (
+              <div className="no-photos-available">
+                {lang === 'fr' 
+                  ? 'Aucune photo disponible à ajouter' 
+                  : 'No photos available to add'}
+              </div>
+            ) : (
+              <>
+                <div className="available-photos-grid">
+                  {availablePhotos.map(photo => (
+                    <div 
+                      key={photo.id}
+                      className={`available-photo-item ${selectedPhotoIds.has(photo.id) ? 'selected' : ''} ${addingPhotos ? 'disabled' : ''}`}
+                      onClick={() => !addingPhotos && togglePhotoSelection(photo.id)}
+                    >
+                      <img src={photo.photo_url} alt={photo.photo_name || 'Photo'} />
+                      <div className="photo-checkbox">
+                        {selectedPhotoIds.has(photo.id) && '✓'}
+                      </div>
+                      {photo.photo_name && (
+                        <span className="photo-name-label">{photo.photo_name}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="selected-count">
+                  {addingPhotos ? addProgress : (
+                    <>
+                      {selectedPhotoIds.size} {lang === 'fr' ? 'photo(s) sélectionnée(s)' : 'photo(s) selected'}
+                      {showAddPhotosDialog.analysis_type && showAddPhotosDialog.analysis_type !== 'general' && (
+                        <span className="analysis-note">
+                          {' '} - {lang === 'fr' ? 'Analyse:' : 'Analysis:'} {ANALYSIS_TYPES.find(t => t.value === showAddPhotosDialog.analysis_type)?.[lang === 'fr' ? 'labelFr' : 'labelEn']}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+            <div className="dialog-buttons">
+              <button 
+                onClick={addPhotosToCollection}
+                disabled={selectedPhotoIds.size === 0 || addingPhotos}
+                className="primary-btn"
+              >
+                {addingPhotos ? (lang === 'fr' ? 'Ajout en cours...' : 'Adding...') : (lang === 'fr' ? 'Ajouter' : 'Add')}
+              </button>
+              <button 
+                onClick={() => !addingPhotos && setShowAddPhotosDialog(null)} 
+                className="cancel-btn"
+                disabled={addingPhotos}
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

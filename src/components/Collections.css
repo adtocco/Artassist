@@ -156,6 +156,8 @@
   padding: 25px;
   max-width: 400px;
   width: 90%;
+  z-index: 100000;
+  position: relative;
 }
 
 .collection-dialog h3 {
@@ -227,5 +229,138 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 99999;
+}
+
+/* Analysis type select */
+.form-label {
+  display: block;
+  font-size: 0.9em;
+  color: #555;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.analysis-type-select {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+  background: white;
+  cursor: pointer;
+}
+
+.analysis-type-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.custom-instructions {
+  background: #f9f9f9;
+}
+
+/* Add photos button */
+.collection-actions .add-photos-btn:hover {
+  background: #e8f5e9;
+}
+
+/* Add photos dialog */
+.add-photos-dialog {
+  max-width: 600px;
+}
+
+.loading-photos,
+.no-photos-available {
+  text-align: center;
+  padding: 30px;
+  color: #888;
+}
+
+.available-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+  max-height: 350px;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+.available-photo-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.available-photo-item:hover {
+  transform: scale(1.02);
+}
+
+.available-photo-item.selected {
+  border-color: #667eea;
+}
+
+.available-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.available-photo-item .photo-checkbox {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: #667eea;
+}
+
+.available-photo-item.selected .photo-checkbox {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.available-photo-item .photo-name-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 4px 6px;
+  font-size: 0.7em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.available-photo-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.selected-count .analysis-note {
+  font-size: 0.85em;
+  color: #888;
+}
+
+.selected-count {
+  text-align: center;
+  padding: 10px;
+  color: #667eea;
+  font-weight: 500;
 }

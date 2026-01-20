@@ -48,6 +48,40 @@
   cursor: not-allowed;
 }
 
+/* Collection analysis info */
+.collection-analysis-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collection-analysis-info label {
+  font-weight: 600;
+  color: #555;
+}
+
+.analysis-type-badge {
+  display: inline-block;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.custom-instructions-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #f0f4ff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #667eea;
+  cursor: help;
+}
+
 .file-input-wrapper {
   position: relative;
 }

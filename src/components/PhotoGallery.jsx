@@ -86,23 +86,62 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      let query = supabase
-        .from('photo_analyses')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      // If viewing a specific collection, fetch via collection_photos junction table
+      if (selectedCollection?.id) {
+        const { data: collectionPhotos, error } = await supabase
+          .from('collection_photos')
+          .select(`
+            id,
+            analysis,
+            analysis_type,
+            photo:photo_analyses(*)
+          `)
+          .eq('collection_id', selectedCollection.id)
+          .order('created_at', { ascending: false });
 
-      // Filter by collection
-      if (selectedCollection === 'none') {
-        query = query.is('collection_id', null);
-      } else if (selectedCollection?.id) {
-        query = query.eq('collection_id', selectedCollection.id);
+        if (error) throw error;
+        
+        // Flatten the data and merge collection-specific analysis
+        const photos = (collectionPhotos || []).map(cp => ({
+          ...cp.photo,
+          collection_photo_id: cp.id,
+          collection_analysis: cp.analysis,
+          collection_analysis_type: cp.analysis_type
+        }));
+        
+        setPhotos(photos);
+      } else if (selectedCollection === 'none') {
+        // Photos not in any collection - check via collection_photos
+        const { data: allPhotos, error } = await supabase
+          .from('photo_analyses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        // Get all photo IDs that are in at least one collection
+        const { data: photosInCollections } = await supabase
+          .from('collection_photos')
+          .select('photo_id');
+        
+        const photoIdsInCollections = new Set((photosInCollections || []).map(p => p.photo_id));
+        
+        // Filter to only photos not in any collection
+        const uncategorizedPhotos = (allPhotos || []).filter(p => !photoIdsInCollections.has(p.id));
+        setPhotos(uncategorizedPhotos);
+      } else {
+        // All photos
+        const { data, error } = await supabase
+          .from('photo_analyses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setPhotos(data || []);
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setPhotos(data || []);
+      
       setSelectedPhotos(new Set()); // Clear selection when changing collection
     } catch (err) {
       console.error('Error fetching photos:', err);
@@ -122,14 +161,49 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     setSelectedPhotos(newSelection);
   };
 
-  const movePhotosToCollection = async (collectionId) => {
+  const movePhotosToCollection = async (targetCollection) => {
     try {
-      const { error } = await supabase
-        .from('photo_analyses')
-        .update({ collection_id: collectionId })
-        .in('id', Array.from(selectedPhotos));
-
-      if (error) throw error;
+      const photoIds = Array.from(selectedPhotos);
+      
+      // If removing from current collection (targetCollection is null or 'none')
+      if (!targetCollection || targetCollection === 'none') {
+        // Remove from collection_photos if viewing a specific collection
+        if (selectedCollection?.id) {
+          const { error } = await supabase
+            .from('collection_photos')
+            .delete()
+            .eq('collection_id', selectedCollection.id)
+            .in('photo_id', photoIds);
+          
+          if (error) throw error;
+        }
+      } else {
+        // Add to new collection via collection_photos
+        // First check which photos are already in the target collection
+        const { data: existingEntries } = await supabase
+          .from('collection_photos')
+          .select('photo_id')
+          .eq('collection_id', targetCollection.id)
+          .in('photo_id', photoIds);
+        
+        const existingPhotoIds = new Set((existingEntries || []).map(e => e.photo_id));
+        const newPhotoIds = photoIds.filter(id => !existingPhotoIds.has(id));
+        
+        if (newPhotoIds.length > 0) {
+          // Insert new entries
+          const newEntries = newPhotoIds.map(photoId => ({
+            collection_id: targetCollection.id,
+            photo_id: photoId,
+            analysis_type: targetCollection.analysis_type
+          }));
+          
+          const { error } = await supabase
+            .from('collection_photos')
+            .insert(newEntries);
+          
+          if (error) throw error;
+        }
+      }
 
       setSelectedPhotos(new Set());
       setShowMoveDialog(false);
@@ -507,16 +581,21 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 <span className="modal-file-name">{selectedPhoto.file_name}</span>
               )}
               <span className="modal-prompt-type">
-                Analysis Type: {selectedPhoto.prompt_type}
+                {lang === 'fr' ? "Type d'analyse" : 'Analysis Type'}: {selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type}
+                {selectedPhoto.collection_analysis && (
+                  <span className="collection-analysis-badge"> ({lang === 'fr' ? 'collection' : 'collection'})</span>
+                )}
               </span>
               <p className="modal-date">
                 {new Date(selectedPhoto.created_at).toLocaleString()}
               </p>
               
               {(() => {
+                // Use collection-specific analysis if available, otherwise use default analysis
+                const analysisSource = selectedPhoto.collection_analysis || selectedPhoto.analysis;
                 let analysis;
                 try {
-                  analysis = JSON.parse(selectedPhoto.analysis);
+                  analysis = JSON.parse(analysisSource);
                 } catch {
                   analysis = null;
                 }
@@ -590,7 +669,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 return (
                   <div className="analysis-content">
                     <h4>{lang === 'fr' ? 'Analyse' : 'Analysis'}:</h4>
-                    <p>{selectedPhoto.analysis}</p>
+                    <p>{analysisSource}</p>
                   </div>
                 );
               })()}

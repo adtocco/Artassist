@@ -605,6 +605,14 @@
   width: fit-content;
 }
 
+.modal-prompt-type .collection-analysis-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-size: 0.85em;
+}
+
 .modal-date {
   color: #888;
   font-size: 0.9em;

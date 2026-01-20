@@ -140,6 +140,7 @@ function App() {
               <Collections 
                 lang={lang} 
                 onSelectCollection={handleCollectionChange}
+                onRefresh={() => setRefreshTrigger(prev => prev + 1)}
               />
             </aside>
             <div className="main-content">

@@ -19,6 +19,38 @@ Concentrez-vous sur : l'attrait visuel pour les plateformes, partageabilité, es
 résonance émotionnelle pour le public en ligne, potentiel de hashtags et probabilité de viralité.`
 };
 
+// Collection-based analysis types (analysis_type from collections table)
+export const COLLECTION_ANALYSIS_PROMPTS = {
+  general: {
+    fr: `Vous êtes un critique d'art expert. Analysez cette photographie de manière complète en couvrant tous les aspects artistiques : composition, lumière, couleurs, émotion et technique.`,
+    en: `You are an expert art critic. Analyze this photograph comprehensively, covering all artistic aspects: composition, lighting, colors, emotion, and technique.`
+  },
+  series: {
+    fr: `Vous êtes un conservateur d'art spécialisé dans les séries photographiques. Analysez cette photo en considérant comment elle pourrait s'intégrer dans une série cohérente. Évaluez les éléments visuels récurrents potentiels, les thèmes narratifs, et la cohérence stylistique.`,
+    en: `You are an art curator specialized in photographic series. Analyze this photo considering how it could fit into a coherent series. Evaluate potential recurring visual elements, narrative themes, and stylistic consistency.`
+  },
+  technique: {
+    fr: `Vous êtes un expert technique en photographie. Concentrez votre analyse sur : la maîtrise technique (netteté, exposition, balance des blancs), l'utilisation de l'équipement, le post-traitement, les réglages apparents (ouverture, vitesse, ISO), et les suggestions d'amélioration technique.`,
+    en: `You are a technical photography expert. Focus your analysis on: technical mastery (sharpness, exposure, white balance), equipment usage, post-processing, apparent settings (aperture, speed, ISO), and technical improvement suggestions.`
+  },
+  composition: {
+    fr: `Vous êtes un expert en composition visuelle. Analysez en profondeur : la règle des tiers, les lignes directrices, le point focal, l'équilibre visuel, l'espace négatif, le cadrage, la perspective, et comment ces éléments guident le regard du spectateur.`,
+    en: `You are a visual composition expert. Analyze in depth: rule of thirds, leading lines, focal point, visual balance, negative space, framing, perspective, and how these elements guide the viewer's eye.`
+  },
+  color: {
+    fr: `Vous êtes un expert en colorimétrie et théorie des couleurs. Analysez : la palette de couleurs dominante, l'harmonie chromatique (complémentaire, analogue, triadique), la température des couleurs, la saturation, le contraste colorimétrique, et l'impact émotionnel des choix de couleurs.`,
+    en: `You are a colorimetry and color theory expert. Analyze: dominant color palette, chromatic harmony (complementary, analogous, triadic), color temperature, saturation, color contrast, and the emotional impact of color choices.`
+  },
+  style: {
+    fr: `Vous êtes un historien de l'art et critique spécialisé dans les styles photographiques. Identifiez : le courant artistique apparent, les influences stylistiques, les références à des photographes ou mouvements connus, l'originalité de la vision, et comment le style contribue au message de l'image.`,
+    en: `You are an art historian and critic specialized in photographic styles. Identify: apparent artistic movement, stylistic influences, references to known photographers or movements, originality of vision, and how style contributes to the image's message.`
+  },
+  custom: {
+    fr: `Vous êtes un critique d'art expert. Suivez attentivement les instructions personnalisées fournies pour votre analyse.`,
+    en: `You are an expert art critic. Carefully follow the custom instructions provided for your analysis.`
+  }
+};
+
 const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après) avec cette structure exacte:
 {
   "name": "Titre Évocateur",
@@ -61,14 +93,24 @@ Rules:
 - "strengths": exactly 3 strengths
 - "improvements": exactly 2 concrete improvement suggestions`;
 
-export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr') {
+export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr', collectionAnalysis = null) {
   try {
-    const systemPrompt = SYSTEM_PROMPTS[promptType] || SYSTEM_PROMPTS.artist;
+    // If collection analysis type is provided, use it instead of promptType
+    let systemPrompt;
+    if (collectionAnalysis && collectionAnalysis.type && COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type]) {
+      systemPrompt = COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type][lang] || COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type].en;
+      // Add custom instructions if provided
+      if (collectionAnalysis.type === 'custom' && collectionAnalysis.instructions) {
+        systemPrompt += `\n\nInstructions personnalisées : ${collectionAnalysis.instructions}`;
+      }
+    } else {
+      systemPrompt = SYSTEM_PROMPTS[promptType] || SYSTEM_PROMPTS.artist;
+    }
     const languageNote = lang && lang !== 'en' ? `Répondez en français.` : 'Respond in English.';
     const jsonStructure = lang === 'fr' ? JSON_STRUCTURE_FR : JSON_STRUCTURE_EN;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -93,7 +135,12 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr')
       max_tokens: 1500
     });
 
-    const content = response.choices[0].message.content;
+    const content = response.choices[0]?.message?.content;
+    console.log('OpenAI raw response:', content);
+    
+    if (!content) {
+      throw new Error('Empty response from OpenAI');
+    }
     
     // Parse JSON response
     try {
@@ -175,7 +222,7 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') 
       : `RESPONSE FORMAT: Use Markdown format. For each proposed series, include a visual preview of the photos using Markdown syntax: ![name](url). Display photo thumbnails side by side for each recommended series.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
