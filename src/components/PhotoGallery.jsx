@@ -64,7 +64,7 @@ function renderMarkdown(text) {
   return elements;
 }
 
-export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
+export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [] }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -75,27 +75,68 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   const [savingAnalysis, setSavingAnalysis] = useState(false);
   const [seriesTitle, setSeriesTitle] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState(new Set());
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
 
   useEffect(() => {
     fetchPhotos();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, selectedCollection]);
 
   const fetchPhotos = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('photo_analyses')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
+      // Filter by collection
+      if (selectedCollection === 'none') {
+        query = query.is('collection_id', null);
+      } else if (selectedCollection?.id) {
+        query = query.eq('collection_id', selectedCollection.id);
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
       setPhotos(data || []);
+      setSelectedPhotos(new Set()); // Clear selection when changing collection
     } catch (err) {
       console.error('Error fetching photos:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const togglePhotoSelection = (photoId, e) => {
+    e.stopPropagation();
+    const newSelection = new Set(selectedPhotos);
+    if (newSelection.has(photoId)) {
+      newSelection.delete(photoId);
+    } else {
+      newSelection.add(photoId);
+    }
+    setSelectedPhotos(newSelection);
+  };
+
+  const movePhotosToCollection = async (collectionId) => {
+    try {
+      const { error } = await supabase
+        .from('photo_analyses')
+        .update({ collection_id: collectionId })
+        .in('id', Array.from(selectedPhotos));
+
+      if (error) throw error;
+
+      setSelectedPhotos(new Set());
+      setShowMoveDialog(false);
+      fetchPhotos(); // Refresh list
+    } catch (err) {
+      console.error('Error moving photos:', err);
+      alert(lang === 'fr' ? 'Erreur lors du déplacement' : 'Error moving photos');
     }
   };
 
@@ -252,7 +293,34 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
   return (
     <div className="photo-gallery">
       <div className="gallery-header">
-        <h2>Your Photo Collection ({photos.length})</h2>
+        <h2>
+          {selectedCollection?.name || (selectedCollection === 'none' 
+            ? (lang === 'fr' ? 'Sans collection' : 'No Collection')
+            : (lang === 'fr' ? 'Toutes les photos' : 'All Photos')
+          )} ({photos.length})
+        </h2>
+        
+        {/* Selection actions */}
+        {selectedPhotos.size > 0 && (
+          <div className="selection-actions">
+            <span className="selection-count">
+              {selectedPhotos.size} {lang === 'fr' ? 'sélectionnée(s)' : 'selected'}
+            </span>
+            <button 
+              onClick={() => setShowMoveDialog(true)}
+              className="move-photos-btn"
+            >
+              📁 {lang === 'fr' ? 'Déplacer' : 'Move'}
+            </button>
+            <button 
+              onClick={() => setSelectedPhotos(new Set())}
+              className="clear-selection-btn"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="series-controls">
           <label htmlFor="series-instructions">Consignes (optionnel) :</label>
           <textarea
@@ -292,6 +360,38 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
               className="close-recommendation"
             >
               {lang === 'fr' ? 'Fermer' : 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Move to Collection Dialog */}
+      {showMoveDialog && (
+        <div className="modal-overlay" onClick={() => setShowMoveDialog(false)}>
+          <div className="move-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>{lang === 'fr' ? 'Déplacer vers une collection' : 'Move to Collection'}</h3>
+            <div className="collection-options">
+              <button 
+                onClick={() => movePhotosToCollection(null)}
+                className="collection-option"
+              >
+                📷 {lang === 'fr' ? 'Sans collection' : 'No Collection'}
+              </button>
+              {collections.map((c) => (
+                <button 
+                  key={c.id}
+                  onClick={() => movePhotosToCollection(c.id)}
+                  className="collection-option"
+                >
+                  📁 {c.name}
+                </button>
+              ))}
+            </div>
+            <button 
+              onClick={() => setShowMoveDialog(false)}
+              className="cancel-btn"
+            >
+              {lang === 'fr' ? 'Annuler' : 'Cancel'}
             </button>
           </div>
         </div>
@@ -340,9 +440,17 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr' }) {
         {photos.map((photo) => (
           <div 
             key={photo.id} 
-            className={`gallery-item ${reanalyzingId === photo.id ? 'reanalyzing' : ''}`}
+            className={`gallery-item ${reanalyzingId === photo.id ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
             onClick={() => setSelectedPhoto(photo)}
           >
+            {/* Selection checkbox */}
+            <div 
+              className={`photo-checkbox ${selectedPhotos.has(photo.id) ? 'checked' : ''}`}
+              onClick={(e) => togglePhotoSelection(photo.id, e)}
+            >
+              {selectedPhotos.has(photo.id) && '✓'}
+            </div>
+            
             {reanalyzingId === photo.id && (
               <div className="reanalyze-overlay">
                 <div className="reanalyze-spinner"></div>

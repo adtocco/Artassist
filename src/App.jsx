@@ -5,6 +5,7 @@ import PhotoUpload from './components/PhotoUpload';
 import PhotoGallery from './components/PhotoGallery';
 import SavedSeries from './components/SavedSeries';
 import SharedSeries from './components/SharedSeries';
+import Collections from './components/Collections';
 import './App.css';
 
 function App() {
@@ -13,6 +14,8 @@ function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lang, setLang] = useState('fr');
   const [activeTab, setActiveTab] = useState('gallery');
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [collections, setCollections] = useState([]);
 
   // Check if we're on a share URL
   const path = window.location.pathname;
@@ -41,6 +44,29 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Fetch collections when session is available
+  useEffect(() => {
+    if (session) {
+      fetchCollections();
+    }
+  }, [session]);
+
+  const fetchCollections = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('collections')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+      
+      if (!error) {
+        setCollections(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching collections:', err);
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
@@ -48,6 +74,11 @@ function App() {
   const handlePhotoAnalyzed = () => {
     // Trigger gallery refresh
     setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleCollectionChange = (collection) => {
+    setSelectedCollection(collection);
+    fetchCollections(); // Refresh collections count
   };
 
   if (loading) {
@@ -104,10 +135,27 @@ function App() {
 
       <main className="app-main">
         {activeTab === 'gallery' ? (
-          <>
-            <PhotoUpload onPhotoAnalyzed={handlePhotoAnalyzed} lang={lang} />
-            <PhotoGallery refreshTrigger={refreshTrigger} lang={lang} />
-          </>
+          <div className="gallery-layout">
+            <aside className="sidebar">
+              <Collections 
+                lang={lang} 
+                onSelectCollection={handleCollectionChange}
+              />
+            </aside>
+            <div className="main-content">
+              <PhotoUpload 
+                onPhotoAnalyzed={handlePhotoAnalyzed} 
+                lang={lang}
+                selectedCollection={selectedCollection}
+              />
+              <PhotoGallery 
+                refreshTrigger={refreshTrigger} 
+                lang={lang}
+                selectedCollection={selectedCollection}
+                collections={collections}
+              />
+            </div>
+          </div>
         ) : (
           <SavedSeries lang={lang} />
         )}

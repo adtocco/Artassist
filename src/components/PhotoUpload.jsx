@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { analyzePhoto } from '../lib/openai';
 import './PhotoUpload.css';
 
-export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
+export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedCollection = null }) {
   const [uploading, setUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [promptType, setPromptType] = useState('artist');
@@ -28,6 +28,11 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // Determine collection_id
+      const collectionId = selectedCollection && selectedCollection !== 'none' 
+        ? selectedCollection.id 
+        : null;
       
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
@@ -60,7 +65,7 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
         // Analyze with OpenAI (pass selected language). Use signed URL when possible to avoid timeouts.
         const analysisResult = await analyzePhoto(urlToAnalyze, promptType, lang);
 
-        // Save to database (now includes photo_name from AI)
+        // Save to database (now includes photo_name from AI and collection_id)
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
@@ -70,7 +75,8 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr' }) {
             analysis: analysisResult.analysis,
             photo_name: analysisResult.name,
             prompt_type: promptType,
-            file_name: file.name
+            file_name: file.name,
+            collection_id: collectionId
           })
           .select()
           .single();
