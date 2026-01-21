@@ -623,11 +623,15 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   {reanalyzingId === photo.id ? '⏳' : '🔄'}
                 </button>
                 <button
-                  className="thumbnail-delete"
-                  onClick={(e) => { e.stopPropagation(); deletePhoto(photo); }}
-                  aria-label={`Delete ${photo.file_name}`}
+                  className={selectedCollection?.id ? "thumbnail-remove" : "thumbnail-delete"}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    selectedCollection?.id ? removeFromCollection(photo) : deletePhoto(photo);
+                  }}
+                  aria-label={selectedCollection?.id ? (lang === 'fr' ? 'Retirer de la collection' : 'Remove from collection') : `Delete ${photo.file_name}`}
+                  title={selectedCollection?.id ? (lang === 'fr' ? 'Retirer de la collection' : 'Remove from collection') : (lang === 'fr' ? 'Supprimer' : 'Delete')}
                 >
-                  🗑️
+                  {selectedCollection?.id ? '−' : '🗑️'}
                 </button>
               </div>
             </div>
@@ -701,6 +705,9 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 }
                 
                 if (analysis && analysis.score !== undefined) {
+                  // Check if this is a marketing/social media analysis
+                  const isMarketingAnalysis = analysis.hashtags || analysis.captions || analysis.subject;
+                  
                   return (
                     <div className="analysis-structured">
                       <div className="analysis-header">
@@ -711,38 +718,92 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                         <p className="analysis-summary">{analysis.summary}</p>
                       </div>
                       
-                      <div className="analysis-sections">
-                        {analysis.composition && (
-                          <div className="analysis-section">
-                            <h5>🎯 {lang === 'fr' ? 'Composition' : 'Composition'}</h5>
-                            <p>{analysis.composition}</p>
+                      {/* Artistic analysis: Story section */}
+                      {!isMarketingAnalysis && analysis.story && (
+                        <div className="analysis-story">
+                          <h5>📖 {lang === 'fr' ? 'Histoire' : 'Story'}</h5>
+                          <p>{analysis.story}</p>
+                        </div>
+                      )}
+                      
+                      {/* Marketing analysis: Subject */}
+                      {analysis.subject && (
+                        <div className="analysis-subject">
+                          <h5>📷 {lang === 'fr' ? 'Sujet de la photo' : 'Photo Subject'}</h5>
+                          <p>{analysis.subject}</p>
+                        </div>
+                      )}
+                      
+                      {/* Marketing analysis section */}
+                      {analysis.marketing && (
+                        <div className="analysis-marketing">
+                          <h5>📱 {lang === 'fr' ? 'Analyse Marketing' : 'Marketing Analysis'}</h5>
+                          <p>{analysis.marketing}</p>
+                        </div>
+                      )}
+                      
+                      {/* Marketing analysis: Hashtags */}
+                      {analysis.hashtags && analysis.hashtags.length > 0 && (
+                        <div className="analysis-hashtags">
+                          <h5># {lang === 'fr' ? 'Hashtags recommandés' : 'Recommended Hashtags'}</h5>
+                          <div className="hashtags-container">
+                            {analysis.hashtags.map((tag, i) => (
+                              <span key={i} className="hashtag-badge">{tag}</span>
+                            ))}
                           </div>
-                        )}
-                        {analysis.lighting && (
-                          <div className="analysis-section">
-                            <h5>💡 {lang === 'fr' ? 'Éclairage' : 'Lighting'}</h5>
-                            <p>{analysis.lighting}</p>
+                        </div>
+                      )}
+                      
+                      {/* Marketing analysis: Captions/Text proposals */}
+                      {analysis.captions && analysis.captions.length > 0 && (
+                        <div className="analysis-captions">
+                          <h5>✍️ {lang === 'fr' ? 'Propositions de textes' : 'Caption Proposals'}</h5>
+                          <div className="captions-list">
+                            {analysis.captions.map((caption, i) => (
+                              <div key={i} className="caption-item">
+                                <span className="caption-number">{i + 1}</span>
+                                <p>{caption}</p>
+                              </div>
+                            ))}
                           </div>
-                        )}
-                        {analysis.colors && (
-                          <div className="analysis-section">
-                            <h5>🎨 {lang === 'fr' ? 'Couleurs' : 'Colors'}</h5>
-                            <p>{analysis.colors}</p>
-                          </div>
-                        )}
-                        {analysis.emotion && (
-                          <div className="analysis-section">
-                            <h5>💫 {lang === 'fr' ? 'Émotion' : 'Emotion'}</h5>
-                            <p>{analysis.emotion}</p>
-                          </div>
-                        )}
-                        {analysis.technique && (
-                          <div className="analysis-section">
-                            <h5>⚙️ {lang === 'fr' ? 'Technique' : 'Technique'}</h5>
-                            <p>{analysis.technique}</p>
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                      
+                      {/* Artistic analysis sections - only show if not marketing */}
+                      {!isMarketingAnalysis && (
+                        <div className="analysis-sections">
+                          {analysis.composition && (
+                            <div className="analysis-section">
+                              <h5>🎯 {lang === 'fr' ? 'Composition' : 'Composition'}</h5>
+                              <p>{analysis.composition}</p>
+                            </div>
+                          )}
+                          {analysis.lighting && (
+                            <div className="analysis-section">
+                              <h5>💡 {lang === 'fr' ? 'Éclairage' : 'Lighting'}</h5>
+                              <p>{analysis.lighting}</p>
+                            </div>
+                          )}
+                          {analysis.colors && (
+                            <div className="analysis-section">
+                              <h5>🎨 {lang === 'fr' ? 'Couleurs' : 'Colors'}</h5>
+                              <p>{analysis.colors}</p>
+                            </div>
+                          )}
+                          {analysis.emotion && (
+                            <div className="analysis-section">
+                              <h5>💫 {lang === 'fr' ? 'Émotion' : 'Emotion'}</h5>
+                              <p>{analysis.emotion}</p>
+                            </div>
+                          )}
+                          {analysis.technique && (
+                            <div className="analysis-section">
+                              <h5>⚙️ {lang === 'fr' ? 'Technique' : 'Technique'}</h5>
+                              <p>{analysis.technique}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       
                       <div className="analysis-lists">
                         {analysis.strengths && analysis.strengths.length > 0 && (
@@ -785,10 +846,10 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                     : (lang === 'fr' ? '🔄 Ré-analyser' : '🔄 Re-analyze')}
                 </button>
                 <button 
-                  className="delete-button"
-                  onClick={() => deletePhoto(selectedPhoto)}
+                  className={selectedCollection?.id ? "remove-button" : "delete-button"}
+                  onClick={() => selectedCollection?.id ? removeFromCollection(selectedPhoto) : deletePhoto(selectedPhoto)}
                 >
-                  🗑️ {lang === 'fr' ? 'Supprimer' : 'Delete Photo'}
+                  {selectedCollection?.id ? '−' : '🗑️'} {selectedCollection?.id ? (lang === 'fr' ? 'Retirer de la collection' : 'Remove from collection') : (lang === 'fr' ? 'Supprimer' : 'Delete Photo')}
                 </button>
               </div>
             </div>

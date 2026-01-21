@@ -253,6 +253,24 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
             
             const analysisResult = await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis, userSettings);
             analysis = analysisResult.analysis;
+            
+            // Update photo_name in photo_analyses table with the new name from analysis
+            if (analysisResult.name) {
+              const { error: updateError } = await supabase
+                .from('photo_analyses')
+                .update({
+                  photo_name: analysisResult.name,
+                  analysis: analysisResult.analysis,
+                  analysis_detail_level: userSettings?.analysis_detail_level || null,
+                  analysis_tone: userSettings?.analysis_tone || null,
+                  analysis_focus_areas: userSettings?.focus_areas || []
+                })
+                .eq('id', photo.id);
+              
+              if (updateError) {
+                console.error('Error updating photo name:', updateError);
+              }
+            }
           } catch (analysisErr) {
             console.error('Error analyzing photo for collection:', analysisErr);
             // Continue without analysis if it fails

@@ -57,6 +57,42 @@ export const COLLECTION_ANALYSIS_PROMPTS = {
   custom: {
     fr: `Vous êtes un critique d'art expert. Suivez attentivement les instructions personnalisées fournies pour votre analyse.`,
     en: `You are an expert art critic. Carefully follow the custom instructions provided for your analysis.`
+  },
+  artist: {
+    fr: `Vous êtes un critique d'art expert analysant des photographies d'un point de vue artistique. Concentrez-vous sur : la composition, l'éclairage, la théorie des couleurs, l'impact émotionnel, l'exécution technique, l'originalité et le mérite artistique.`,
+    en: `You are an expert art critic analyzing photographs from an artistic perspective. Focus on: composition, lighting, color theory, emotional impact, technical execution, originality, and artistic merit.`
+  },
+  socialMedia: {
+    fr: `Vous êtes un·e stratège en marketing digital et réseaux sociaux spécialisé·e dans le contenu visuel. Analysez cette photographie sous l'angle marketing et engagement :
+
+FOCUS MARKETING :
+- Potentiel d'engagement (likes, partages, commentaires)
+- Attrait visuel immédiat et capacité à capter l'attention dans un feed
+- Émotions déclenchées propices à l'interaction
+- Storytelling marketing : quelle histoire/message cette image véhicule-t-elle ?
+- Ciblage d'audience : quel public cette image attirera-t-elle ?
+- Call-to-action implicite : qu'est-ce que cette image inspire à faire ?
+- Cohérence avec les tendances visuelles actuelles des réseaux sociaux
+- Optimisation pour différentes plateformes (Instagram, Facebook, LinkedIn, TikTok)
+- Potentiel de viralité et partageabilité
+- Suggestions de hashtags pertinents et stratégie de publication
+
+Évaluez comment cette photo peut servir des objectifs marketing : notoriété de marque, génération de leads, engagement communautaire, ou conversion.`,
+    en: `You are a digital marketing and social media strategist specialized in visual content. Analyze this photograph from a marketing and engagement perspective:
+
+MARKETING FOCUS:
+- Engagement potential (likes, shares, comments)
+- Immediate visual appeal and feed-stopping power
+- Emotions triggered that encourage interaction
+- Marketing storytelling: what story/message does this image convey?
+- Audience targeting: which demographics will this image attract?
+- Implicit call-to-action: what does this image inspire people to do?
+- Alignment with current social media visual trends
+- Optimization for different platforms (Instagram, Facebook, LinkedIn, TikTok)
+- Virality potential and shareability
+- Relevant hashtag suggestions and posting strategy
+
+Evaluate how this photo can serve marketing objectives: brand awareness, lead generation, community engagement, or conversion.`
   }
 };
 
@@ -65,6 +101,7 @@ const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON va
   "name": "Titre Évocateur",
   "score": 85,
   "summary": "Une phrase résumant l'impression générale de l'image.",
+  "story": "Une histoire en 2 lignes qui raconte ce que cette image évoque, comme un récit imaginaire inspiré par la scène.",
   "composition": "Analyse de la composition, cadrage, règle des tiers, lignes directrices...",
   "lighting": "Analyse de l'éclairage, contrastes, ombres, lumière naturelle/artificielle...",
   "colors": "Analyse des couleurs, harmonie, palette, saturation, température...",
@@ -77,6 +114,7 @@ const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON va
 Règles:
 - "name": titre poétique de 1 à 3 mots capturant l'essence de la photo
 - "score": note de 0 à 100 basée sur la qualité artistique globale
+- "story": exactement 2 lignes racontant une histoire imaginaire inspirée par la photo
 - Chaque champ texte: 1-3 phrases concises et pertinentes
 - "strengths": exactement 3 points forts
 - "improvements": exactement 2 suggestions concrètes d'amélioration`;
@@ -86,6 +124,7 @@ const JSON_STRUCTURE_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no 
   "name": "Evocative Title",
   "score": 85,
   "summary": "One sentence summarizing the overall impression of the image.",
+  "story": "A 2-line story that narrates what this image evokes, like an imaginary tale inspired by the scene.",
   "composition": "Analysis of composition, framing, rule of thirds, leading lines...",
   "lighting": "Analysis of lighting, contrasts, shadows, natural/artificial light...",
   "colors": "Analysis of colors, harmony, palette, saturation, temperature...",
@@ -98,22 +137,82 @@ const JSON_STRUCTURE_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no 
 Rules:
 - "name": poetic title of 1 to 3 words capturing the essence of the photo
 - "score": rating from 0 to 100 based on overall artistic quality
+- "story": exactly 2 lines narrating an imaginary story inspired by the photo
 - Each text field: 1-3 concise and relevant sentences
 - "strengths": exactly 3 strengths
 - "improvements": exactly 2 concrete improvement suggestions`;
+
+// Structure JSON spécifique pour les analyses Réseaux Sociaux / Marketing
+const JSON_STRUCTURE_MARKETING_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après) avec cette structure exacte pour une ANALYSE MARKETING / RÉSEAUX SOCIAUX:
+{
+  "name": "Titre Accrocheur",
+  "score": 85,
+  "summary": "Une phrase résumant le potentiel marketing de l'image.",
+  "subject": "Description claire et précise du sujet/objet principal de la photo et ce qu'il représente.",
+  "marketing": "Analyse marketing complète : potentiel d'engagement (likes, partages, commentaires), public cible, émotions déclenchées, optimisation multi-plateformes (Instagram, Facebook, LinkedIn, TikTok), potentiel de viralité, objectifs marketing (notoriété/leads/conversion).",
+  "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5", "#hashtag6", "#hashtag7", "#hashtag8", "#hashtag9", "#hashtag10"],
+  "captions": [
+    "Première proposition de texte pour accompagner la photo sur les réseaux sociaux. Engageant et accrocheur.",
+    "Deuxième proposition de texte, avec un angle différent ou un ton plus formel/professionnel.",
+    "Troisième proposition de texte, peut-être plus créatif ou avec un call-to-action."
+  ],
+  "strengths": ["Point fort marketing 1", "Point fort marketing 2", "Point fort marketing 3"],
+  "improvements": ["Suggestion d'amélioration pour plus d'impact 1", "Suggestion d'amélioration pour plus d'impact 2"]
+}
+
+Règles:
+- "name": titre accrocheur de 1 à 3 mots pour les réseaux sociaux
+- "score": note de 0 à 100 basée sur le potentiel marketing et d'engagement
+- "subject": description détaillée du sujet/objet principal de la photo (2-3 phrases)
+- "marketing": analyse marketing détaillée et complète (minimum 4-5 phrases)
+- "hashtags": exactement 10 hashtags pertinents et populaires, en commençant par #
+- "captions": exactement 3 propositions de textes différents pour accompagner la photo
+- "strengths": exactement 3 points forts marketing
+- "improvements": exactement 2 suggestions pour améliorer l'impact`;
+
+const JSON_STRUCTURE_MARKETING_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no text before or after) with this exact structure for a MARKETING / SOCIAL MEDIA ANALYSIS:
+{
+  "name": "Catchy Title",
+  "score": 85,
+  "summary": "One sentence summarizing the marketing potential of the image.",
+  "subject": "Clear and precise description of the main subject/object of the photo and what it represents.",
+  "marketing": "Complete marketing analysis: engagement potential (likes, shares, comments), target audience, triggered emotions, multi-platform optimization (Instagram, Facebook, LinkedIn, TikTok), virality potential, marketing objectives (awareness/leads/conversion).",
+  "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5", "#hashtag6", "#hashtag7", "#hashtag8", "#hashtag9", "#hashtag10"],
+  "captions": [
+    "First text proposal to accompany the photo on social media. Engaging and catchy.",
+    "Second text proposal, with a different angle or a more formal/professional tone.",
+    "Third text proposal, perhaps more creative or with a call-to-action."
+  ],
+  "strengths": ["Marketing strength 1", "Marketing strength 2", "Marketing strength 3"],
+  "improvements": ["Suggestion to improve impact 1", "Suggestion to improve impact 2"]
+}
+
+Rules:
+- "name": catchy title of 1 to 3 words for social media
+- "score": rating from 0 to 100 based on marketing and engagement potential
+- "subject": detailed description of the main subject/object of the photo (2-3 sentences)
+- "marketing": detailed and complete marketing analysis (minimum 4-5 sentences)
+- "hashtags": exactly 10 relevant and popular hashtags, starting with #
+- "captions": exactly 3 different text proposals to accompany the photo
+- "strengths": exactly 3 marketing strengths
+- "improvements": exactly 2 suggestions to improve impact`;
 
 export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr', collectionAnalysis = null, userSettings = null) {
   try {
     // If collection analysis type is provided, use it instead of promptType
     let systemPrompt;
+    let isSocialMediaAnalysis = false;
+    
     if (collectionAnalysis && collectionAnalysis.type && COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type]) {
       systemPrompt = COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type][lang] || COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type].en;
+      isSocialMediaAnalysis = collectionAnalysis.type === 'socialMedia';
       // Add custom instructions if provided
       if (collectionAnalysis.type === 'custom' && collectionAnalysis.instructions) {
         systemPrompt += `\n\nInstructions personnalisées : ${collectionAnalysis.instructions}`;
       }
     } else {
       systemPrompt = SYSTEM_PROMPTS[promptType] || SYSTEM_PROMPTS.artist;
+      isSocialMediaAnalysis = promptType === 'socialMedia';
     }
     
     // Apply user settings customizations
@@ -140,7 +239,14 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
     }
     
     const languageNote = lang && lang !== 'en' ? `Répondez en français.` : 'Respond in English.';
-    const jsonStructure = lang === 'fr' ? JSON_STRUCTURE_FR : JSON_STRUCTURE_EN;
+    
+    // Use marketing-specific JSON structure for social media analysis
+    let jsonStructure;
+    if (isSocialMediaAnalysis) {
+      jsonStructure = lang === 'fr' ? JSON_STRUCTURE_MARKETING_FR : JSON_STRUCTURE_MARKETING_EN;
+    } else {
+      jsonStructure = lang === 'fr' ? JSON_STRUCTURE_FR : JSON_STRUCTURE_EN;
+    }
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -154,9 +260,13 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
           content: [
             {
               type: "text",
-              text: lang === 'fr' 
-                ? 'Analysez cette photographie d\'un point de vue artistique et technique. Si la photo contient des personnes, analysez la composition, la posture, l\'expression et l\'émotion sans chercher à identifier qui elles sont.' 
-                : 'Analyze this photograph from an artistic and technical perspective. If the photo contains people, analyze the composition, posture, expression, and emotion without attempting to identify who they are.'
+              text: isSocialMediaAnalysis
+                ? (lang === 'fr' 
+                  ? 'Analysez cette photographie pour une utilisation sur les réseaux sociaux. Évaluez son potentiel marketing, proposez des hashtags pertinents et 3 textes d\'accompagnement différents.'
+                  : 'Analyze this photograph for social media use. Evaluate its marketing potential, suggest relevant hashtags and 3 different caption texts.')
+                : (lang === 'fr' 
+                  ? 'Analysez cette photographie d\'un point de vue artistique et technique. Si la photo contient des personnes, analysez la composition, la posture, l\'expression et l\'émotion sans chercher à identifier qui elles sont.' 
+                  : 'Analyze this photograph from an artistic and technical perspective. If the photo contains people, analyze the composition, posture, expression, and emotion without attempting to identify who they are.')
             },
             {
               type: "image_url",
@@ -167,7 +277,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
           ]
         }
       ],
-      max_tokens: 1500
+      max_tokens: 2000
     });
 
     const content = response.choices[0]?.message?.content;
@@ -212,6 +322,13 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
         analysis: JSON.stringify({
           score: parsed.score || 0,
           summary: parsed.summary || '',
+          story: parsed.story || '',
+          // Marketing-specific fields
+          subject: parsed.subject || null,
+          marketing: parsed.marketing || null,
+          hashtags: parsed.hashtags || null,
+          captions: parsed.captions || null,
+          // Artistic analysis fields
           composition: parsed.composition || '',
           lighting: parsed.lighting || '',
           colors: parsed.colors || '',
