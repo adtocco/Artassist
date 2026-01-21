@@ -8,15 +8,24 @@ const openai = new OpenAI({
 export const SYSTEM_PROMPTS = {
   artist: `Vous êtes un critique d'art expert analysant des photographies d'un point de vue artistique.
 Concentrez-vous sur : la composition, l'éclairage, la théorie des couleurs, l'impact émotionnel,
-l'exécution technique, l'originalité et le mérite artistique.`,
+l'exécution technique, l'originalité et le mérite artistique.
+
+IMPORTANT : Analysez TOUJOURS la photo d'un point de vue artistique, même si elle contient des personnes.
+Ne tentez JAMAIS d'identifier les personnes. Analysez uniquement les aspects techniques et artistiques de l'image.`,
 
   gallery: `Vous êtes un conservateur de galerie évaluant des photographies pour leur potentiel d'exposition.
 Concentrez-vous sur : commercialisabilité, attrait en galerie, cohérence thématique, impact visuel
-dans l'espace d'exposition, intérêt des collectionneurs et adéquation avec les tendances du marché.`,
+dans l'espace d'exposition, intérêt des collectionneurs et adéquation avec les tendances du marché.
+
+IMPORTANT : Analysez TOUJOURS la photo, même si elle contient des personnes. Ne tentez pas de les identifier,
+analysez uniquement la qualité artistique et le potentiel d'exposition.`,
 
   socialMedia: `Vous êtes un·e stratège en médias sociaux analysant des photographies pour l'engagement en ligne.
 Concentrez-vous sur : l'attrait visuel pour les plateformes, partageabilité, esthétiques tendance,
-résonance émotionnelle pour le public en ligne, potentiel de hashtags et probabilité de viralité.`
+résonance émotionnelle pour le public en ligne, potentiel de hashtags et probabilité de viralité.
+
+IMPORTANT : Analysez TOUJOURS la photo pour son potentiel sur les réseaux sociaux, même si elle contient des personnes.
+Ne tentez pas de les identifier, analysez uniquement l'impact visuel et l'engagement potentiel.`
 };
 
 // Collection-based analysis types (analysis_type from collections table)
@@ -93,7 +102,7 @@ Rules:
 - "strengths": exactly 3 strengths
 - "improvements": exactly 2 concrete improvement suggestions`;
 
-export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr', collectionAnalysis = null) {
+export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr', collectionAnalysis = null, userSettings = null) {
   try {
     // If collection analysis type is provided, use it instead of promptType
     let systemPrompt;
@@ -106,6 +115,30 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
     } else {
       systemPrompt = SYSTEM_PROMPTS[promptType] || SYSTEM_PROMPTS.artist;
     }
+    
+    // Apply user settings customizations
+    if (userSettings) {
+      // Detail level
+      if (userSettings.analysis_detail_level === 'concise') {
+        systemPrompt += `\n\nSTYLE : Soyez concis et direct. Limitez chaque section à 1-2 phrases maximum.`;
+      } else if (userSettings.analysis_detail_level === 'detailed') {
+        systemPrompt += `\n\nSTYLE : Fournissez une analyse approfondie et détaillée. Développez chaque aspect avec précision.`;
+      }
+      
+      // Tone
+      if (userSettings.analysis_tone === 'friendly') {
+        systemPrompt += `\n\nTON : Adoptez un ton amical, encourageant et accessible. Utilisez un langage chaleureux.`;
+      } else if (userSettings.analysis_tone === 'technical') {
+        systemPrompt += `\n\nTON : Utilisez des termes techniques précis. Soyez spécifique sur les aspects techniques (ISO, ouverture, etc.).`;
+      }
+      
+      // Focus areas
+      if (userSettings.focus_areas && userSettings.focus_areas.length > 0) {
+        const focusAreasText = userSettings.focus_areas.join(', ');
+        systemPrompt += `\n\nPRIORITÉS : Accordez une attention particulière à ces aspects : ${focusAreasText}. Développez-les davantage que les autres aspects.`;
+      }
+    }
+    
     const languageNote = lang && lang !== 'en' ? `Répondez en français.` : 'Respond in English.';
     const jsonStructure = lang === 'fr' ? JSON_STRUCTURE_FR : JSON_STRUCTURE_EN;
 
@@ -121,7 +154,9 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
           content: [
             {
               type: "text",
-              text: lang === 'fr' ? 'Analysez cette photographie.' : 'Analyze this photograph.'
+              text: lang === 'fr' 
+                ? 'Analysez cette photographie d\'un point de vue artistique et technique. Si la photo contient des personnes, analysez la composition, la posture, l\'expression et l\'émotion sans chercher à identifier qui elles sont.' 
+                : 'Analyze this photograph from an artistic and technical perspective. If the photo contains people, analyze the composition, posture, expression, and emotion without attempting to identify who they are.'
             },
             {
               type: "image_url",
@@ -145,15 +180,29 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
     // Parse JSON response
     try {
       let jsonStr = content.trim();
-      if (jsonStr.startsWith('```json')) {
-        jsonStr = jsonStr.slice(7);
-      } else if (jsonStr.startsWith('```')) {
-        jsonStr = jsonStr.slice(3);
+      
+      // Extract JSON from markdown code blocks or from text with extra content
+      if (jsonStr.includes('```json')) {
+        const jsonMatch = jsonStr.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+      } else if (jsonStr.includes('```')) {
+        const jsonMatch = jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+      } else {
+        // Try to extract JSON object from text (find first { to last })
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+        }
       }
-      if (jsonStr.endsWith('```')) {
-        jsonStr = jsonStr.slice(0, -3);
-      }
+      
       jsonStr = jsonStr.trim();
+      console.log('Extracted JSON string:', jsonStr);
       
       const parsed = JSON.parse(jsonStr);
       

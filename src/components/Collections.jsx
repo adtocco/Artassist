@@ -5,22 +5,17 @@ import { analyzePhoto } from '../lib/openai';
 import './Collections.css';
 
 const ANALYSIS_TYPES = [
-  { value: 'general', labelFr: 'Analyse générale', labelEn: 'General analysis' },
-  { value: 'series', labelFr: 'Analyse de série', labelEn: 'Series analysis' },
-  { value: 'technique', labelFr: 'Technique artistique', labelEn: 'Artistic technique' },
-  { value: 'composition', labelFr: 'Composition', labelEn: 'Composition' },
-  { value: 'color', labelFr: 'Palette de couleurs', labelEn: 'Color palette' },
-  { value: 'style', labelFr: 'Style et influences', labelEn: 'Style and influences' },
-  { value: 'custom', labelFr: 'Personnalisé', labelEn: 'Custom' },
+  { value: 'artist', labelFr: 'Artistique', labelEn: 'Artistic' },
+  { value: 'socialMedia', labelFr: 'Réseaux Sociaux', labelEn: 'Social Media' },
 ];
 
-export default function Collections({ lang = 'fr', onSelectCollection, onRefresh }) {
+export default function Collections({ lang = 'fr', onSelectCollection, onRefresh, userSettings = null }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
-  const [newAnalysisType, setNewAnalysisType] = useState('general');
+  const [newAnalysisType, setNewAnalysisType] = useState('artist');
   const [newAnalysisInstructions, setNewAnalysisInstructions] = useState('');
   const [creating, setCreating] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState(null);
@@ -113,7 +108,7 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
       setCollections([{ ...data, photo_count: [{ count: 0 }] }, ...collections]);
       setNewCollectionName('');
       setNewCollectionDescription('');
-      setNewAnalysisType('general');
+      setNewAnalysisType('artist');
       setNewAnalysisInstructions('');
       setShowCreateDialog(false);
     } catch (err) {
@@ -133,7 +128,7 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
         .update({
           name: editingCollection.name.trim(),
           description: editingCollection.description?.trim() || null,
-          analysis_type: editingCollection.analysis_type || 'general',
+          analysis_type: editingCollection.analysis_type || 'artist',
           analysis_instructions: editingCollection.analysis_type === 'custom' 
             ? editingCollection.analysis_instructions?.trim() : null,
           updated_at: new Date().toISOString()
@@ -256,7 +251,7 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
               instructions: collection.analysis_instructions
             };
             
-            const analysisResult = await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis);
+            const analysisResult = await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis, userSettings);
             analysis = analysisResult.analysis;
           } catch (analysisErr) {
             console.error('Error analyzing photo for collection:', analysisErr);
@@ -272,7 +267,10 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
             collection_id: collection.id,
             photo_id: photo.id,
             analysis: analysis,
-            analysis_type: collection.analysis_type
+            analysis_type: collection.analysis_type,
+            analysis_detail_level: userSettings?.analysis_detail_level || null,
+            analysis_tone: userSettings?.analysis_tone || null,
+            analysis_focus_areas: userSettings?.focus_areas || []
           });
 
         if (error) {

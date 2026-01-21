@@ -72,6 +72,21 @@
   gap: 15px;
 }
 
+.settings-button {
+  padding: 8px 12px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.2em;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-button:hover {
+  background: #e0e0e0;
+  transform: translateY(-1px);
+}
+
 .user-email {
   color: #666;
   font-size: 0.9em;

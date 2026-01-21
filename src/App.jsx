@@ -6,6 +6,7 @@ import PhotoGallery from './components/PhotoGallery';
 import SavedSeries from './components/SavedSeries';
 import SharedSeries from './components/SharedSeries';
 import Collections from './components/Collections';
+import UserSettings from './components/UserSettings';
 import './App.css';
 
 function App() {
@@ -16,6 +17,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('gallery');
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [collections, setCollections] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [userSettings, setUserSettings] = useState(null);
 
   // Check if we're on a share URL
   const path = window.location.pathname;
@@ -44,10 +47,11 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch collections when session is available
+  // Fetch collections and user settings when session is available
   useEffect(() => {
     if (session) {
       fetchCollections();
+      loadUserSettings();
     }
   }, [session]);
 
@@ -67,6 +71,32 @@ function App() {
     }
   };
 
+  const loadUserSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading user settings:', error);
+        return;
+      }
+
+      if (data) {
+        setUserSettings({
+          analysis_detail_level: data.analysis_detail_level || 'balanced',
+          analysis_tone: data.analysis_tone || 'professional',
+          focus_areas: data.focus_areas || [],
+          language_preference: data.language_preference || 'fr'
+        });
+      }
+    } catch (err) {
+      console.error('Error loading user settings:', err);
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
@@ -78,6 +108,12 @@ function App() {
 
   const handleCollectionChange = (collection) => {
     setSelectedCollection(collection);
+  };
+
+  const handleSettingsUpdate = (newSettings) => {
+    setUserSettings(newSettings);
+    // Force refresh to apply new settings
+    setRefreshTrigger(prev => prev + 1);
     fetchCollections(); // Refresh collections count
   };
 
@@ -101,6 +137,13 @@ function App() {
           <h1>🎨 ArtAssist</h1>
           <div className="header-actions">
             <span className="user-email">{session.user.email}</span>
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="settings-button"
+              title={lang === 'fr' ? 'Paramètres' : 'Settings'}
+            >
+              ⚙️
+            </button>
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value)}
@@ -140,20 +183,21 @@ function App() {
               <Collections 
                 lang={lang} 
                 onSelectCollection={handleCollectionChange}
-                onRefresh={() => setRefreshTrigger(prev => prev + 1)}
-              />
+                onRefresh={() => setRefreshTrigger(prev => prev + 1)}                userSettings={userSettings}              />
             </aside>
             <div className="main-content">
               <PhotoUpload 
                 onPhotoAnalyzed={handlePhotoAnalyzed} 
                 lang={lang}
                 selectedCollection={selectedCollection}
+                userSettings={userSettings}
               />
               <PhotoGallery 
                 refreshTrigger={refreshTrigger} 
                 lang={lang}
                 selectedCollection={selectedCollection}
                 collections={collections}
+                userSettings={userSettings}
               />
             </div>
           </div>
@@ -161,6 +205,15 @@ function App() {
           <SavedSeries lang={lang} />
         )}
       </main>
+
+      {showSettings && (
+        <UserSettings
+          user={session.user}
+          lang={lang}
+          onClose={() => setShowSettings(false)}
+          onSettingsUpdate={handleSettingsUpdate}
+        />
+      )}
 
       <footer className="app-footer">
         <p>AI-Powered Artistic Photo Analysis with GPT-4</p>

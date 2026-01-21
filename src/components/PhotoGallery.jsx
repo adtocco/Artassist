@@ -64,7 +64,7 @@ function renderMarkdown(text) {
   return elements;
 }
 
-export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [] }) {
+export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -94,6 +94,9 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             id,
             analysis,
             analysis_type,
+            analysis_detail_level,
+            analysis_tone,
+            analysis_focus_areas,
             photo:photo_analyses(*)
           `)
           .eq('collection_id', selectedCollection.id)
@@ -106,7 +109,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           ...cp.photo,
           collection_photo_id: cp.id,
           collection_analysis: cp.analysis,
-          collection_analysis_type: cp.analysis_type
+          collection_analysis_type: cp.analysis_type,
+          // Prioritize collection settings over photo settings
+          analysis_detail_level: cp.analysis_detail_level || cp.photo.analysis_detail_level,
+          analysis_tone: cp.analysis_tone || cp.photo.analysis_tone,
+          analysis_focus_areas: cp.analysis_focus_areas || cp.photo.analysis_focus_areas
         }));
         
         setPhotos(photos);
@@ -314,43 +321,101 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const reanalyzePhoto = async (photo, e) => {
     if (e) e.stopPropagation();
     
+    console.log('🔄 Starting reanalysis for photo:', photo.id);
+    console.log('Photo data:', { id: photo.id, storage_path: photo.storage_path, prompt_type: photo.prompt_type });
+    
     setReanalyzingId(photo.id);
     try {
+      console.log('📸 Getting signed URL...');
       // Get a signed URL for better reliability
       const { data: signedData } = await supabase.storage
         .from('photos')
         .createSignedUrl(photo.storage_path, 60);
 
       const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
+      console.log('✅ URL to analyze:', urlToAnalyze ? 'obtained' : 'missing');
 
+      // Prepare collection analysis if we're in a collection view
+      let collectionAnalysis = null;
+      if (selectedCollection?.id && selectedCollection.analysis_type) {
+        collectionAnalysis = {
+          type: selectedCollection.analysis_type,
+          instructions: selectedCollection.analysis_instructions
+        };
+        console.log('📁 Collection analysis type:', collectionAnalysis.type);
+      }
+
+      console.log('🤖 Calling OpenAI API...');
       // Re-analyze with OpenAI
-      const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type, lang);
+      const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, userSettings);
+      console.log('✅ Analysis complete:', analysisResult ? 'success' : 'failed');
 
-      // Update in database and get the updated row back
-      const { data: updatedPhoto, error } = await supabase
+      console.log('💾 Updating photo_analyses table...');
+      // Update in database
+      const { error: updateError } = await supabase
         .from('photo_analyses')
         .update({
           analysis: analysisResult.analysis,
-          photo_name: analysisResult.name
+          photo_name: analysisResult.name,
+          analysis_detail_level: userSettings?.analysis_detail_level || null,
+          analysis_tone: userSettings?.analysis_tone || null,
+          analysis_focus_areas: userSettings?.focus_areas || []
         })
-        .eq('id', photo.id)
-        .select()
-        .single();
+        .eq('id', photo.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+      console.log('✅ Photo updated in database');
 
-      // Update local state with the data from database
-      setPhotos(photos.map(p => p.id === photo.id ? updatedPhoto : p));
-      if (selectedPhoto?.id === photo.id) {
-        setSelectedPhoto(updatedPhoto);
+      // If we're in a collection view, also update the collection-specific analysis
+      if (selectedCollection?.id && photo.collection_photo_id) {
+        console.log('📁 Updating collection_photos table...');
+        const { error: collectionUpdateError } = await supabase
+          .from('collection_photos')
+          .update({
+            analysis: analysisResult.analysis,
+            analysis_type: selectedCollection.analysis_type,
+            analysis_detail_level: userSettings?.analysis_detail_level || null,
+            analysis_tone: userSettings?.analysis_tone || null,
+            analysis_focus_areas: userSettings?.focus_areas || []
+          })
+          .eq('id', photo.collection_photo_id);
+        
+        if (collectionUpdateError) {
+          console.error('❌ Error updating collection analysis:', collectionUpdateError);
+        } else {
+          console.log('✅ Collection photo updated');
+        }
       }
+
+      console.log('🔄 Refreshing photos list...');
+      // Refresh photos to get updated data
+      await fetchPhotos();
+      console.log('✅ Photos refreshed');
+      
+      // If modal is open, we need to update it with fresh data
+      // fetchPhotos will trigger a re-render, and we'll update in the effect below
+      
+      console.log('✅ Reanalysis complete!');
     } catch (err) {
-      console.error('Error re-analyzing photo:', err);
+      console.error('❌ Error re-analyzing photo:', err);
+      console.error('Error details:', { message: err.message, stack: err.stack });
       alert(lang === 'fr' ? 'Erreur lors de la ré-analyse : ' + err.message : 'Error re-analyzing photo: ' + err.message);
     } finally {
+      console.log('🏁 Cleaning up...');
       setReanalyzingId(null);
     }
   };
+
+  // Update modal when photos change after reanalysis
+  useEffect(() => {
+    if (selectedPhoto && !reanalyzingId) {
+      const updatedPhoto = photos.find(p => p.id === selectedPhoto.id);
+      if (updatedPhoto && JSON.stringify(updatedPhoto) !== JSON.stringify(selectedPhoto)) {
+        console.log('🔄 Updating modal with fresh photo data');
+        setSelectedPhoto(updatedPhoto);
+      }
+    }
+  }, [photos, reanalyzingId]);
 
   if (loading) {
     return <div className="loading">Loading your photos...</div>;
@@ -395,24 +460,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           </div>
         )}
 
-        <div className="series-controls">
-          <label htmlFor="series-instructions">Consignes (optionnel) :</label>
-          <textarea
-            id="series-instructions"
-            value={seriesInstructions}
-            onChange={(e) => setSeriesInstructions(e.target.value)}
-            placeholder={lang === 'fr' ? "Ex: Cherche une série cohérente autour de la couleur et du contraste" : "E.g.: Find a series focusing on color and contrast coherence"}
-            rows={2}
-          />
-
-          <button 
-            onClick={analyzeCollection}
-            disabled={analyzingSeries || photos.length < 2}
-            className="analyze-series-button"
-          >
-            {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Trouver une série' : 'Find Photo Series')}
-          </button>
-        </div>
+        <button 
+          onClick={analyzeCollection}
+          disabled={analyzingSeries || photos.length < 2}
+          className="analyze-series-button"
+        >
+          {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Trouver une série' : 'Find Photo Series')}
+        </button>
       </div>
 
       {seriesRecommendation && (
@@ -511,7 +565,22 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       )}
 
       <div className="gallery-grid">
-        {photos.map((photo) => (
+        {photos.map((photo) => {
+          // Extract score from analysis
+          let score = null;
+          try {
+            const analysisSource = photo.collection_analysis || photo.analysis;
+            if (analysisSource) {
+              const parsedAnalysis = JSON.parse(analysisSource);
+              if (parsedAnalysis.score !== undefined) {
+                score = parsedAnalysis.score;
+              }
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+
+          return (
           <div 
             key={photo.id} 
             className={`gallery-item ${reanalyzingId === photo.id ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
@@ -524,6 +593,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             >
               {selectedPhotos.has(photo.id) && '✓'}
             </div>
+            
+            {/* Score badge */}
+            {score !== null && (
+              <div className="photo-score-badge">{score}/100</div>
+            )}
             
             {reanalyzingId === photo.id && (
               <div className="reanalyze-overlay">
@@ -558,7 +632,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {selectedPhoto && (
@@ -589,6 +664,31 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               <p className="modal-date">
                 {new Date(selectedPhoto.created_at).toLocaleString()}
               </p>
+              
+              {/* Analysis settings tags */}
+              {(selectedPhoto.analysis_detail_level || selectedPhoto.analysis_tone || (selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0)) && (
+                <div className="analysis-settings-tags">
+                  {selectedPhoto.analysis_detail_level && (
+                    <span className={`settings-tag detail-${selectedPhoto.analysis_detail_level}`}>
+                      {selectedPhoto.analysis_detail_level === 'concise' ? '📝 Concis' : 
+                       selectedPhoto.analysis_detail_level === 'detailed' ? '📚 Détaillé' : 
+                       '⚖️ Équilibré'}
+                    </span>
+                  )}
+                  {selectedPhoto.analysis_tone && (
+                    <span className={`settings-tag tone-${selectedPhoto.analysis_tone}`}>
+                      {selectedPhoto.analysis_tone === 'friendly' ? '😊 Amical' : 
+                       selectedPhoto.analysis_tone === 'technical' ? '🔧 Technique' : 
+                       '💼 Professionnel'}
+                    </span>
+                  )}
+                  {selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0 && (
+                    <span className="settings-tag focus-areas">
+                      🎯 {selectedPhoto.analysis_focus_areas.join(', ')}
+                    </span>
+                  )}
+                </div>
+              )}
               
               {(() => {
                 // Use collection-specific analysis if available, otherwise use default analysis

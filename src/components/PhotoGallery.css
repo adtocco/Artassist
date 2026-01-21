@@ -438,6 +438,21 @@
   letter-spacing: 0.5px;
 }
 
+.photo-score-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 700;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+}
+
 .gallery-item-overlay {
   position: absolute;
 .reanalyze-button { background: rgba(255,255,255,0.9); border-radius:6px; padding:6px; border:1px solid #eee; cursor:pointer }
@@ -617,6 +632,60 @@
   color: #888;
   font-size: 0.9em;
   margin: 0;
+}
+
+.analysis-settings-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.settings-tag {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 15px;
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-tag.detail-concise {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.settings-tag.detail-balanced {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.settings-tag.detail-detailed {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.settings-tag.tone-professional {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.settings-tag.tone-friendly {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.settings-tag.tone-technical {
+  background: #e0f2f1;
+  color: #00796b;
+}
+
+.settings-tag.focus-areas {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
 .analysis-content {

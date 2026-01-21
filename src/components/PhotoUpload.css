@@ -60,6 +60,17 @@
   color: #555;
 }
 
+.collection-name-badge {
+  display: inline-block;
+  padding: 8px 14px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
 .analysis-type-badge {
   display: inline-block;
   padding: 10px 16px;
@@ -80,6 +91,22 @@
   font-size: 13px;
   color: #667eea;
   cursor: help;
+}
+
+.no-collection-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fff3e0;
+  border: 1px solid #ffb74d;
+  border-radius: 8px;
+  color: #e65100;
+  font-size: 14px;
+}
+
+.no-collection-warning .warning-icon {
+  font-size: 18px;
 }
 
 .file-input-wrapper {
