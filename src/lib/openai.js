@@ -147,7 +147,7 @@ const JSON_STRUCTURE_MARKETING_FR = `IMPORTANT: Répondez UNIQUEMENT avec un obj
 {
   "name": "Titre Accrocheur",
   "score": 85,
-  "summary": "Une phrase résumant le potentiel marketing de l'image.",
+  "summary": "Une phrase résumant le potentiel de viralité et d'engagement de l'image.",
   "subject": "Description claire et précise du sujet/objet principal de la photo et ce qu'il représente.",
   "marketing": "Analyse marketing complète : potentiel d'engagement (likes, partages, commentaires), public cible, émotions déclenchées, optimisation multi-plateformes (Instagram, Facebook, LinkedIn, TikTok), potentiel de viralité, objectifs marketing (notoriété/leads/conversion).",
   "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5", "#hashtag6", "#hashtag7", "#hashtag8", "#hashtag9", "#hashtag10"],
@@ -162,7 +162,7 @@ const JSON_STRUCTURE_MARKETING_FR = `IMPORTANT: Répondez UNIQUEMENT avec un obj
 
 Règles:
 - "name": titre accrocheur de 1 à 3 mots pour les réseaux sociaux
-- "score": note de 0 à 100 basée sur le potentiel marketing et d'engagement
+- "score": note de VIRALITÉ et d'ENGAGEMENT de 0 à 100. Évaluez le potentiel viral de l'image : 0-30 = faible engagement attendu, 31-60 = engagement modéré, 61-80 = bon potentiel viral, 81-100 = très fort potentiel de viralité. Considérez l'attrait visuel immédiat, l'émotion suscitée, la partageabilité, l'originalité et l'adéquation aux tendances actuelles.
 - "subject": description détaillée du sujet/objet principal de la photo (2-3 phrases)
 - "marketing": analyse marketing détaillée et complète (minimum 4-5 phrases)
 - "hashtags": exactement 10 hashtags pertinents et populaires, en commençant par #
@@ -174,7 +174,7 @@ const JSON_STRUCTURE_MARKETING_EN = `IMPORTANT: Respond ONLY with a valid JSON o
 {
   "name": "Catchy Title",
   "score": 85,
-  "summary": "One sentence summarizing the marketing potential of the image.",
+  "summary": "One sentence summarizing the virality and engagement potential of the image.",
   "subject": "Clear and precise description of the main subject/object of the photo and what it represents.",
   "marketing": "Complete marketing analysis: engagement potential (likes, shares, comments), target audience, triggered emotions, multi-platform optimization (Instagram, Facebook, LinkedIn, TikTok), virality potential, marketing objectives (awareness/leads/conversion).",
   "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5", "#hashtag6", "#hashtag7", "#hashtag8", "#hashtag9", "#hashtag10"],
@@ -189,7 +189,7 @@ const JSON_STRUCTURE_MARKETING_EN = `IMPORTANT: Respond ONLY with a valid JSON o
 
 Rules:
 - "name": catchy title of 1 to 3 words for social media
-- "score": rating from 0 to 100 based on marketing and engagement potential
+- "score": VIRALITY and ENGAGEMENT score from 0 to 100. Evaluate the viral potential of the image: 0-30 = low expected engagement, 31-60 = moderate engagement, 61-80 = good viral potential, 81-100 = very high virality potential. Consider immediate visual appeal, emotion triggered, shareability, originality, and alignment with current trends.
 - "subject": detailed description of the main subject/object of the photo (2-3 sentences)
 - "marketing": detailed and complete marketing analysis (minimum 4-5 sentences)
 - "hashtags": exactly 10 relevant and popular hashtags, starting with #

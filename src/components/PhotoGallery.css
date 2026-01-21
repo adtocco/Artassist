@@ -758,6 +758,23 @@
   margin-left: 2px;
 }
 
+.score-type {
+  font-size: 0.55em;
+  display: block;
+  margin-top: 4px;
+  opacity: 0.9;
+}
+
+.analysis-score.virality-score {
+  background: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+  flex-direction: column;
+  padding: 14px 18px;
+}
+
+.analysis-score.virality-score .score-value {
+  font-size: 1.8em;
+}
+
 .analysis-summary {
   margin: 0;
   font-size: 1.05em;

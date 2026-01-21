@@ -711,9 +711,12 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   return (
                     <div className="analysis-structured">
                       <div className="analysis-header">
-                        <div className="analysis-score">
+                        <div className={`analysis-score ${isMarketingAnalysis ? 'virality-score' : ''}`}>
                           <span className="score-value">{analysis.score}</span>
                           <span className="score-label">/100</span>
+                          {isMarketingAnalysis && (
+                            <span className="score-type">🔥 {lang === 'fr' ? 'Viralité' : 'Virality'}</span>
+                          )}
                         </div>
                         <p className="analysis-summary">{analysis.summary}</p>
                       </div>
