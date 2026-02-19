@@ -64,19 +64,39 @@ function renderMarkdown(text) {
   return elements;
 }
 
-export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null }) {
+export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null, onPhotosChanged = null }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [seriesRecommendation, setSeriesRecommendation] = useState(null);
   const [analyzingSeries, setAnalyzingSeries] = useState(false);
   const [seriesInstructions, setSeriesInstructions] = useState('');
-  const [reanalyzingId, setReanalyzingId] = useState(null);
+  const [reanalyzingIds, setReanalyzingIds] = useState(new Set());
   const [savingAnalysis, setSavingAnalysis] = useState(false);
   const [seriesTitle, setSeriesTitle] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+
+  // Keyboard navigation for modal
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedPhoto(null);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const idx = photos.findIndex(p => p.id === selectedPhoto.id);
+        if (idx < photos.length - 1) setSelectedPhoto(photos[idx + 1]);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const idx = photos.findIndex(p => p.id === selectedPhoto.id);
+        if (idx > 0) setSelectedPhoto(photos[idx - 1]);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPhoto, photos]);
 
   useEffect(() => {
     fetchPhotos();
@@ -215,6 +235,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       setSelectedPhotos(new Set());
       setShowMoveDialog(false);
       fetchPhotos(); // Refresh list
+      // Notify parent to refresh collections (counts & covers)
+      if (onPhotosChanged) onPhotosChanged();
     } catch (err) {
       console.error('Error moving photos:', err);
       alert(lang === 'fr' ? 'Erreur lors du déplacement' : 'Error moving photos');
@@ -312,28 +334,52 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       if (selectedPhoto?.id === photo.id) {
         setSelectedPhoto(null);
       }
+      // Notify parent to refresh collections (counts & covers)
+      if (onPhotosChanged) onPhotosChanged();
     } catch (err) {
       console.error('Error deleting photo:', err);
       alert('Error deleting photo: ' + err.message);
     }
   };
 
+  const removeFromCollection = async (photo) => {
+    const msg = lang === 'fr'
+      ? 'Retirer cette photo de la collection ? (la photo ne sera pas supprimée)'
+      : 'Remove this photo from the collection? (the photo will not be deleted)';
+    if (!confirm(msg)) return;
+
+    try {
+      const { error } = await supabase
+        .from('collection_photos')
+        .delete()
+        .eq('collection_id', selectedCollection.id)
+        .eq('photo_id', photo.id);
+
+      if (error) throw error;
+
+      fetchPhotos();
+      if (selectedPhoto?.id === photo.id) {
+        setSelectedPhoto(null);
+      }
+      // Notify parent to refresh collections (counts & covers)
+      if (onPhotosChanged) onPhotosChanged();
+    } catch (err) {
+      console.error('Error removing from collection:', err);
+      alert(lang === 'fr' ? 'Erreur lors du retrait : ' + err.message : 'Error removing: ' + err.message);
+    }
+  };
+
   const reanalyzePhoto = async (photo, e) => {
     if (e) e.stopPropagation();
     
-    console.log('🔄 Starting reanalysis for photo:', photo.id);
-    console.log('Photo data:', { id: photo.id, storage_path: photo.storage_path, prompt_type: photo.prompt_type });
-    
-    setReanalyzingId(photo.id);
+    setReanalyzingIds(prev => new Set(prev).add(photo.id));
     try {
-      console.log('📸 Getting signed URL...');
       // Get a signed URL for better reliability
       const { data: signedData } = await supabase.storage
         .from('photos')
         .createSignedUrl(photo.storage_path, 60);
 
       const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
-      console.log('✅ URL to analyze:', urlToAnalyze ? 'obtained' : 'missing');
 
       // Prepare collection analysis if we're in a collection view
       let collectionAnalysis = null;
@@ -342,15 +388,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           type: selectedCollection.analysis_type,
           instructions: selectedCollection.analysis_instructions
         };
-        console.log('📁 Collection analysis type:', collectionAnalysis.type);
       }
 
-      console.log('🤖 Calling OpenAI API...');
       // Re-analyze with OpenAI
       const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, userSettings);
-      console.log('✅ Analysis complete:', analysisResult ? 'success' : 'failed');
 
-      console.log('💾 Updating photo_analyses table...');
       // Update in database
       const { error: updateError } = await supabase
         .from('photo_analyses')
@@ -364,12 +406,10 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         .eq('id', photo.id);
 
       if (updateError) throw updateError;
-      console.log('✅ Photo updated in database');
 
       // If we're in a collection view, also update the collection-specific analysis
       if (selectedCollection?.id && photo.collection_photo_id) {
-        console.log('📁 Updating collection_photos table...');
-        const { error: collectionUpdateError } = await supabase
+        await supabase
           .from('collection_photos')
           .update({
             analysis: analysisResult.analysis,
@@ -379,52 +419,106 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             analysis_focus_areas: userSettings?.focus_areas || []
           })
           .eq('id', photo.collection_photo_id);
-        
-        if (collectionUpdateError) {
-          console.error('❌ Error updating collection analysis:', collectionUpdateError);
-        } else {
-          console.log('✅ Collection photo updated');
-        }
       }
 
-      console.log('🔄 Refreshing photos list...');
-      // Refresh photos to get updated data
-      await fetchPhotos();
-      console.log('✅ Photos refreshed');
-      
-      // If modal is open, we need to update it with fresh data
-      // fetchPhotos will trigger a re-render, and we'll update in the effect below
-      
-      console.log('✅ Reanalysis complete!');
     } catch (err) {
-      console.error('❌ Error re-analyzing photo:', err);
-      console.error('Error details:', { message: err.message, stack: err.stack });
+      console.error('Error re-analyzing photo:', err);
       alert(lang === 'fr' ? 'Erreur lors de la ré-analyse : ' + err.message : 'Error re-analyzing photo: ' + err.message);
     } finally {
-      console.log('🏁 Cleaning up...');
-      setReanalyzingId(null);
+      setReanalyzingIds(prev => {
+        const next = new Set(prev);
+        next.delete(photo.id);
+        // If this was the last one, refresh the photo list
+        if (next.size === 0) {
+          fetchPhotos();
+        }
+        return next;
+      });
+    }
+  };
+
+  const reanalyzeBulk = async () => {
+    const ids = Array.from(selectedPhotos);
+    const photosToReanalyze = photos.filter(p => ids.includes(p.id));
+    if (photosToReanalyze.length === 0) return;
+
+    const msg = lang === 'fr'
+      ? `Ré-analyser ${photosToReanalyze.length} photo(s) ? Cela peut prendre du temps.`
+      : `Re-analyze ${photosToReanalyze.length} photo(s)? This may take a while.`;
+    if (!confirm(msg)) return;
+
+    setSelectedPhotos(new Set());
+    
+    // Mark all as reanalyzing
+    setReanalyzingIds(prev => {
+      const next = new Set(prev);
+      photosToReanalyze.forEach(p => next.add(p.id));
+      return next;
+    });
+
+    // Process sequentially to avoid API rate limits
+    for (const photo of photosToReanalyze) {
+      await reanalyzePhoto(photo);
     }
   };
 
   // Update modal when photos change after reanalysis
   useEffect(() => {
-    if (selectedPhoto && !reanalyzingId) {
+    if (selectedPhoto && reanalyzingIds.size === 0) {
       const updatedPhoto = photos.find(p => p.id === selectedPhoto.id);
       if (updatedPhoto && JSON.stringify(updatedPhoto) !== JSON.stringify(selectedPhoto)) {
         console.log('🔄 Updating modal with fresh photo data');
         setSelectedPhoto(updatedPhoto);
       }
     }
-  }, [photos, reanalyzingId]);
+  }, [photos, reanalyzingIds]);
 
   if (loading) {
-    return <div className="loading">Loading your photos...</div>;
+    return (
+      <div className="loading">
+        <div className="loading-skeleton">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="skeleton-card" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (photos.length === 0) {
     return (
       <div className="empty-gallery">
-        <p>No photos analyzed yet. Upload some photos to get started!</p>
+        {selectedCollection?.id ? (
+          <>
+            <div className="empty-icon">📂</div>
+            <h3>{lang === 'fr' ? 'Collection vide' : 'Empty collection'}</h3>
+            <p>{lang === 'fr' 
+              ? 'Téléversez des photos ci-dessus ou ajoutez-en depuis vos photos existantes.'
+              : 'Upload photos above or add existing ones to this collection.'}</p>
+          </>
+        ) : (
+          <>
+            <div className="empty-icon">📸</div>
+            <h3>{lang === 'fr' ? 'Aucune photo' : 'No photos yet'}</h3>
+            <p>{lang === 'fr' 
+              ? 'Créez une collection dans le panneau de gauche, puis téléversez vos premières photos pour commencer.'
+              : 'Create a collection in the left panel, then upload your first photos to get started.'}</p>
+            <div className="onboarding-steps">
+              <div className="onboarding-step">
+                <span className="step-number">1</span>
+                <span>{lang === 'fr' ? 'Créez une collection' : 'Create a collection'}</span>
+              </div>
+              <div className="onboarding-step">
+                <span className="step-number">2</span>
+                <span>{lang === 'fr' ? 'Sélectionnez-la' : 'Select it'}</span>
+              </div>
+              <div className="onboarding-step">
+                <span className="step-number">3</span>
+                <span>{lang === 'fr' ? 'Téléversez vos photos' : 'Upload your photos'}</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -450,6 +544,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               className="move-photos-btn"
             >
               📁 {lang === 'fr' ? 'Déplacer' : 'Move'}
+            </button>
+            <button 
+              onClick={reanalyzeBulk}
+              className="reanalyze-photos-btn"
+              disabled={reanalyzingIds.size > 0}
+            >
+              🔄 {lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}
             </button>
             <button 
               onClick={() => setSelectedPhotos(new Set())}
@@ -508,7 +609,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               {collections.map((c) => (
                 <button 
                   key={c.id}
-                  onClick={() => movePhotosToCollection(c.id)}
+                  onClick={() => movePhotosToCollection(c)}
                   className="collection-option"
                 >
                   📁 {c.name}
@@ -566,14 +667,14 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
 
       <div className="gallery-grid">
         {photos.map((photo) => {
-          // Extract score from analysis
-          let score = null;
+          // Extract appreciation from analysis
+          let appreciation = null;
           try {
             const analysisSource = photo.collection_analysis || photo.analysis;
             if (analysisSource) {
               const parsedAnalysis = JSON.parse(analysisSource);
-              if (parsedAnalysis.score !== undefined) {
-                score = parsedAnalysis.score;
+              if (parsedAnalysis.appreciation) {
+                appreciation = parsedAnalysis.appreciation;
               }
             }
           } catch (e) {
@@ -583,7 +684,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           return (
           <div 
             key={photo.id} 
-            className={`gallery-item ${reanalyzingId === photo.id ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
+            className={`gallery-item ${reanalyzingIds.has(photo.id) ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
             onClick={() => setSelectedPhoto(photo)}
           >
             {/* Selection checkbox */}
@@ -594,12 +695,12 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               {selectedPhotos.has(photo.id) && '✓'}
             </div>
             
-            {/* Score badge */}
-            {score !== null && (
-              <div className="photo-score-badge">{score}/100</div>
+            {/* Appreciation badge */}
+            {appreciation && (
+              <div className="photo-appreciation-badge">{appreciation}</div>
             )}
             
-            {reanalyzingId === photo.id && (
+            {reanalyzingIds.has(photo.id) && (
               <div className="reanalyze-overlay">
                 <div className="reanalyze-spinner"></div>
                 <span>{lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...'}</span>
@@ -616,11 +717,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 <button
                   className="thumbnail-reanalyze"
                   onClick={(e) => reanalyzePhoto(photo, e)}
-                  disabled={reanalyzingId === photo.id}
+                  disabled={reanalyzingIds.has(photo.id)}
                   aria-label={lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}
                   title={lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}
                 >
-                  {reanalyzingId === photo.id ? '⏳' : '🔄'}
+                  {reanalyzingIds.has(photo.id) ? '⏳' : '🔄'}
                 </button>
                 <button
                   className={selectedCollection?.id ? "thumbnail-remove" : "thumbnail-delete"}
@@ -640,15 +741,33 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         })}
       </div>
 
-      {selectedPhoto && (
+      {selectedPhoto && (() => {
+        const currentIndex = photos.findIndex(p => p.id === selectedPhoto.id);
+        const hasPrev = currentIndex > 0;
+        const hasNext = currentIndex < photos.length - 1;
+        return (
         <div className="modal-overlay" onClick={() => setSelectedPhoto(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button 
-              className="modal-close"
-              onClick={() => setSelectedPhoto(null)}
-            >
-              ×
+          {/* Navigation arrows */}
+          {hasPrev && (
+            <button className="modal-nav modal-nav-prev" onClick={(e) => { e.stopPropagation(); setSelectedPhoto(photos[currentIndex - 1]); }} title={lang === 'fr' ? 'Photo précédente' : 'Previous photo'}>
+              ‹
             </button>
+          )}
+          {hasNext && (
+            <button className="modal-nav modal-nav-next" onClick={(e) => { e.stopPropagation(); setSelectedPhoto(photos[currentIndex + 1]); }} title={lang === 'fr' ? 'Photo suivante' : 'Next photo'}>
+              ›
+            </button>
+          )}
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-top-bar">
+              <span className="modal-photo-counter">{currentIndex + 1} / {photos.length}</span>
+              <button 
+                className="modal-close"
+                onClick={() => setSelectedPhoto(null)}
+              >
+                ×
+              </button>
+            </div>
             
             <div className="modal-photo">
               <img src={selectedPhoto.photo_url} alt={selectedPhoto.file_name} />
@@ -666,8 +785,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 )}
               </span>
               <p className="modal-date">
-                {new Date(selectedPhoto.created_at).toLocaleString()}
+                📅 {lang === 'fr' ? 'Ajoutée le' : 'Added on'} {new Date(selectedPhoto.created_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
+              {selectedPhoto.analysis && selectedPhoto.updated_at && selectedPhoto.updated_at !== selectedPhoto.created_at && (
+                <p className="modal-date analysis-date">
+                  🔄 {lang === 'fr' ? 'Dernière analyse le' : 'Last analyzed on'} {new Date(selectedPhoto.updated_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
               
               {/* Analysis settings tags */}
               {(selectedPhoto.analysis_detail_level || selectedPhoto.analysis_tone || (selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0)) && (
@@ -704,18 +828,18 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   analysis = null;
                 }
                 
-                if (analysis && analysis.score !== undefined) {
+                if (analysis && (analysis.appreciation || analysis.score !== undefined)) {
                   // Check if this is a marketing/social media analysis
                   const isMarketingAnalysis = analysis.hashtags || analysis.captions || analysis.subject;
+                  const appreciationText = analysis.appreciation || `${analysis.score}/100`;
                   
                   return (
                     <div className="analysis-structured">
                       <div className="analysis-header">
-                        <div className={`analysis-score ${isMarketingAnalysis ? 'virality-score' : ''}`}>
-                          <span className="score-value">{analysis.score}</span>
-                          <span className="score-label">/100</span>
+                        <div className={`analysis-appreciation ${isMarketingAnalysis ? 'virality-appreciation' : ''}`}>
+                          <span className="appreciation-value">{appreciationText}</span>
                           {isMarketingAnalysis && (
-                            <span className="score-type">🔥 {lang === 'fr' ? 'Viralité' : 'Virality'}</span>
+                            <span className="appreciation-type">🔥 {lang === 'fr' ? 'Viralité' : 'Virality'}</span>
                           )}
                         </div>
                         <p className="analysis-summary">{analysis.summary}</p>
@@ -842,9 +966,9 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 <button 
                   className="reanalyze-button"
                   onClick={(e) => reanalyzePhoto(selectedPhoto, e)}
-                  disabled={reanalyzingId === selectedPhoto.id}
+                  disabled={reanalyzingIds.has(selectedPhoto.id)}
                 >
-                  {reanalyzingId === selectedPhoto.id 
+                  {reanalyzingIds.has(selectedPhoto.id) 
                     ? (lang === 'fr' ? '⏳ Analyse en cours...' : '⏳ Analyzing...') 
                     : (lang === 'fr' ? '🔄 Ré-analyser' : '🔄 Re-analyze')}
                 </button>
@@ -858,7 +982,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

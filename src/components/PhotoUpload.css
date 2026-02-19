@@ -208,3 +208,272 @@
   color: #666;
   padding: 3px 0;
 }
+
+/* ===== Analysis Overlay Animations ===== */
+.analysis-overlay {
+  margin-top: 20px;
+  padding: 30px 20px;
+  border-radius: 12px;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+.analysis-overlay.uploading {
+  background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+}
+
+.analysis-overlay.analyzing {
+  background: linear-gradient(135deg, #f3e5f5, #e1bee7);
+}
+
+.analysis-overlay.done {
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+}
+
+.analysis-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Upload animation */
+.upload-animation {
+  width: 64px;
+  height: 64px;
+}
+
+.upload-arrow {
+  animation: bounceUp 1s ease-in-out infinite;
+  color: #1976d2;
+}
+
+.upload-arrow svg {
+  width: 64px;
+  height: 64px;
+}
+
+@keyframes bounceUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+/* Analyzing animation - eye */
+.analyzing-animation {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-icon svg {
+  width: 64px;
+  height: 64px;
+}
+
+.eye-shape {
+  animation: eyeBlink 3s ease-in-out infinite;
+}
+
+.eye-pupil {
+  animation: eyeLook 4s ease-in-out infinite;
+  transform-origin: 32px 32px;
+}
+
+.eye-glint {
+  animation: glint 2s ease-in-out infinite;
+}
+
+@keyframes eyeBlink {
+  0%, 90%, 100% { ry: 18; }
+  95% { ry: 2; }
+}
+
+@keyframes eyeLook {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(4px); }
+  75% { transform: translateX(-4px); }
+}
+
+@keyframes glint {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.scan-line {
+  position: absolute;
+  width: 70px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #667eea, transparent);
+  animation: scanDown 2s ease-in-out infinite;
+  border-radius: 2px;
+}
+
+@keyframes scanDown {
+  0% { top: 10px; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { top: 65px; opacity: 0; }
+}
+
+/* Status text */
+.analysis-status-text {
+  font-weight: 600;
+  font-size: 1em;
+  color: #333;
+  margin: 0;
+}
+
+.analysis-status-text.done {
+  color: #2e7d32;
+  font-size: 1.1em;
+}
+
+/* Tips rotation */
+.analysis-tip {
+  font-size: 0.9em;
+  color: #667eea;
+  font-style: italic;
+  margin: 0;
+  min-height: 20px;
+  animation: tipFade 3s ease-in-out;
+}
+
+@keyframes tipFade {
+  0% { opacity: 0; transform: translateY(6px); }
+  15% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
+/* Progress bar */
+.progress-bar-container {
+  width: 100%;
+  max-width: 260px;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  animation: progressIndeterminate 1.8s ease-in-out infinite;
+}
+
+.progress-bar-fill.uploading {
+  background: linear-gradient(90deg, #1976d2, #42a5f5);
+}
+
+.progress-bar-fill.analyzing {
+  background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+@keyframes progressIndeterminate {
+  0% { width: 0%; margin-left: 0; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+/* Elapsed time */
+.elapsed-time {
+  font-size: 0.8em;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Done checkmark */
+.done-animation {
+  width: 56px;
+  height: 56px;
+}
+
+.checkmark {
+  width: 56px;
+  height: 56px;
+}
+
+.checkmark-circle {
+  stroke: #2e7d32;
+  stroke-width: 2;
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: strokeDraw 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.checkmark-check {
+  stroke: #2e7d32;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: strokeDraw 0.4s cubic-bezier(0.65, 0, 0.45, 1) 0.4s forwards;
+}
+
+@keyframes strokeDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Drag & Drop Zone ===== */
+.file-input-wrapper.drag-over label {
+  background: #e8eaf6;
+  border-color: #667eea;
+  border-style: solid;
+  transform: scale(1.02);
+}
+
+/* ===== File Preview Thumbnails ===== */
+.selected-files-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.file-preview-item {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #e0e0e0;
+  transition: border-color 0.2s;
+}
+
+.file-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.file-preview-item .remove-file {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.file-preview-item:hover .remove-file {
+  opacity: 1;
+}

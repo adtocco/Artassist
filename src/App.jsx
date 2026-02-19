@@ -13,6 +13,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [collectionsRefreshTrigger, setCollectionsRefreshTrigger] = useState(0);
   const [lang, setLang] = useState('fr');
   const [activeTab, setActiveTab] = useState('gallery');
   const [selectedCollection, setSelectedCollection] = useState(null);
@@ -183,7 +184,10 @@ function App() {
               <Collections 
                 lang={lang} 
                 onSelectCollection={handleCollectionChange}
-                onRefresh={() => setRefreshTrigger(prev => prev + 1)}                userSettings={userSettings}              />
+                onRefresh={() => setRefreshTrigger(prev => prev + 1)}
+                refreshTrigger={collectionsRefreshTrigger}
+                userSettings={userSettings}
+              />
             </aside>
             <div className="main-content">
               <PhotoUpload 
@@ -198,6 +202,7 @@ function App() {
                 selectedCollection={selectedCollection}
                 collections={collections}
                 userSettings={userSettings}
+                onPhotosChanged={() => setCollectionsRefreshTrigger(prev => prev + 1)}
               />
             </div>
           </div>

@@ -1,7 +1,13 @@
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true // Note: In production, API calls should go through a backend
+});
+
+const anthropic = new Anthropic({
+  apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
   dangerouslyAllowBrowser: true // Note: In production, API calls should go through a backend
 });
 
@@ -99,7 +105,7 @@ Evaluate how this photo can serve marketing objectives: brand awareness, lead ge
 const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après) avec cette structure exacte:
 {
   "name": "Titre Évocateur",
-  "score": 85,
+  "appreciation": "Bonne",
   "summary": "Une phrase résumant l'impression générale de l'image.",
   "story": "Une histoire en 2 lignes qui raconte ce que cette image évoque, comme un récit imaginaire inspiré par la scène.",
   "composition": "Analyse de la composition, cadrage, règle des tiers, lignes directrices...",
@@ -113,7 +119,15 @@ const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON va
 
 Règles:
 - "name": titre poétique de 1 à 3 mots capturant l'essence de la photo
-- "score": note de 0 à 100 basée sur la qualité artistique globale
+- "appreciation": UNE seule appréciation parmi les suivantes (en respectant exactement l'orthographe) :
+  * "Insuffisante" : Photo ratée (floue, mal exposée, sans intérêt)
+  * "Faible" : Photo avec des défauts majeurs, peu d'intérêt artistique
+  * "Moyenne" : Photo correcte mais banale, manque d'originalité
+  * "Bonne" : Maîtrise technique, quelques qualités artistiques notables
+  * "Très bonne" : Composition soignée, vrai regard artistique
+  * "Excellente" : Maîtrise remarquable, forte émotion, originalité
+  * "Exceptionnelle" : Chef-d'œuvre, digne d'une exposition majeure
+  Soyez STRICT : une photo amateur typique devrait recevoir "Moyenne" ou "Bonne". Réservez "Excellente" et "Exceptionnelle" aux photos véritablement remarquables.
 - "story": exactement 2 lignes racontant une histoire imaginaire inspirée par la photo
 - Chaque champ texte: 1-3 phrases concises et pertinentes
 - "strengths": exactement 3 points forts
@@ -122,7 +136,7 @@ Règles:
 const JSON_STRUCTURE_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no text before or after) with this exact structure:
 {
   "name": "Evocative Title",
-  "score": 85,
+  "appreciation": "Good",
   "summary": "One sentence summarizing the overall impression of the image.",
   "story": "A 2-line story that narrates what this image evokes, like an imaginary tale inspired by the scene.",
   "composition": "Analysis of composition, framing, rule of thirds, leading lines...",
@@ -136,7 +150,15 @@ const JSON_STRUCTURE_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no 
 
 Rules:
 - "name": poetic title of 1 to 3 words capturing the essence of the photo
-- "score": rating from 0 to 100 based on overall artistic quality
+- "appreciation": ONE single appreciation from the following (use exact spelling):
+  * "Insufficient": Failed photo (blurry, badly exposed, no interest)
+  * "Weak": Major flaws, little artistic interest
+  * "Average": Adequate but unremarkable, lacks originality
+  * "Good": Technical mastery, some notable artistic qualities
+  * "Very good": Careful composition, genuine artistic vision
+  * "Excellent": Remarkable mastery, strong emotion, originality
+  * "Exceptional": Masterpiece, worthy of a major exhibition
+  Be STRICT: a typical amateur photo should receive "Average" or "Good". Reserve "Excellent" and "Exceptional" for truly remarkable photos.
 - "story": exactly 2 lines narrating an imaginary story inspired by the photo
 - Each text field: 1-3 concise and relevant sentences
 - "strengths": exactly 3 strengths
@@ -146,7 +168,7 @@ Rules:
 const JSON_STRUCTURE_MARKETING_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après) avec cette structure exacte pour une ANALYSE MARKETING / RÉSEAUX SOCIAUX:
 {
   "name": "Titre Accrocheur",
-  "score": 85,
+  "appreciation": "Bon potentiel",
   "summary": "Une phrase résumant le potentiel de viralité et d'engagement de l'image.",
   "subject": "Description claire et précise du sujet/objet principal de la photo et ce qu'il représente.",
   "marketing": "Analyse marketing complète : potentiel d'engagement (likes, partages, commentaires), public cible, émotions déclenchées, optimisation multi-plateformes (Instagram, Facebook, LinkedIn, TikTok), potentiel de viralité, objectifs marketing (notoriété/leads/conversion).",
@@ -162,7 +184,15 @@ const JSON_STRUCTURE_MARKETING_FR = `IMPORTANT: Répondez UNIQUEMENT avec un obj
 
 Règles:
 - "name": titre accrocheur de 1 à 3 mots pour les réseaux sociaux
-- "score": note de VIRALITÉ et d'ENGAGEMENT de 0 à 100. Évaluez le potentiel viral de l'image : 0-30 = faible engagement attendu, 31-60 = engagement modéré, 61-80 = bon potentiel viral, 81-100 = très fort potentiel de viralité. Considérez l'attrait visuel immédiat, l'émotion suscitée, la partageabilité, l'originalité et l'adéquation aux tendances actuelles.
+- "appreciation": UNE seule appréciation de VIRALITÉ / ENGAGEMENT parmi les suivantes (en respectant exactement l'orthographe) :
+  * "Aucun potentiel" : Image sans intérêt pour les réseaux
+  * "Faible potentiel" : Contenu banal, peu partageable
+  * "Potentiel modéré" : Correct mais ne se démarque pas dans un feed
+  * "Bon potentiel" : Attire l'attention, suscite quelques interactions
+  * "Très bon potentiel" : Visuellement percutant, partageable
+  * "Excellent potentiel" : Contenu remarquable, forte probabilité de viralité
+  * "Potentiel exceptionnel" : Digne de devenir viral à grande échelle
+  Soyez STRICT : un contenu moyen devrait recevoir "Potentiel modéré" ou "Bon potentiel". Réservez "Excellent potentiel" et au-dessus aux contenus vraiment percutants.
 - "subject": description détaillée du sujet/objet principal de la photo (2-3 phrases)
 - "marketing": analyse marketing détaillée et complète (minimum 4-5 phrases)
 - "hashtags": exactement 10 hashtags pertinents et populaires, en commençant par #
@@ -173,7 +203,7 @@ Règles:
 const JSON_STRUCTURE_MARKETING_EN = `IMPORTANT: Respond ONLY with a valid JSON object (no text before or after) with this exact structure for a MARKETING / SOCIAL MEDIA ANALYSIS:
 {
   "name": "Catchy Title",
-  "score": 85,
+  "appreciation": "Good potential",
   "summary": "One sentence summarizing the virality and engagement potential of the image.",
   "subject": "Clear and precise description of the main subject/object of the photo and what it represents.",
   "marketing": "Complete marketing analysis: engagement potential (likes, shares, comments), target audience, triggered emotions, multi-platform optimization (Instagram, Facebook, LinkedIn, TikTok), virality potential, marketing objectives (awareness/leads/conversion).",
@@ -189,7 +219,15 @@ const JSON_STRUCTURE_MARKETING_EN = `IMPORTANT: Respond ONLY with a valid JSON o
 
 Rules:
 - "name": catchy title of 1 to 3 words for social media
-- "score": VIRALITY and ENGAGEMENT score from 0 to 100. Evaluate the viral potential of the image: 0-30 = low expected engagement, 31-60 = moderate engagement, 61-80 = good viral potential, 81-100 = very high virality potential. Consider immediate visual appeal, emotion triggered, shareability, originality, and alignment with current trends.
+- "appreciation": ONE single VIRALITY / ENGAGEMENT appreciation from the following (use exact spelling):
+  * "No potential": Image with no social media appeal
+  * "Weak potential": Mundane content, not shareable
+  * "Moderate potential": Adequate but does not stand out in a feed
+  * "Good potential": Catches attention, generates some interactions
+  * "Very good potential": Visually striking, shareable
+  * "Excellent potential": Remarkable content, high virality probability
+  * "Exceptional potential": Worthy of going viral at scale
+  Be STRICT: average content should receive "Moderate potential" or "Good potential". Reserve "Excellent potential" and above for truly striking content.
 - "subject": detailed description of the main subject/object of the photo (2-3 sentences)
 - "marketing": detailed and complete marketing analysis (minimum 4-5 sentences)
 - "hashtags": exactly 10 relevant and popular hashtags, starting with #
@@ -249,7 +287,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.2",
       messages: [
         {
           role: "system",
@@ -277,7 +315,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
           ]
         }
       ],
-      max_tokens: 2000
+      max_completion_tokens: 2000
     });
 
     const content = response.choices[0]?.message?.content;
@@ -320,7 +358,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
       return {
         name: parsed.name || (lang === 'fr' ? 'Sans titre' : 'Untitled'),
         analysis: JSON.stringify({
-          score: parsed.score || 0,
+          appreciation: parsed.appreciation || (lang === 'fr' ? 'Non évaluée' : 'Not rated'),
           summary: parsed.summary || '',
           story: parsed.story || '',
           // Marketing-specific fields
@@ -384,22 +422,27 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') 
       : `IMPORTANT: ALWAYS use the photo names (${photoNames}) to identify them in your recommendations, never "Photo 1", "Photo 2", etc.`;
 
     const markdownInstruction = lang === 'fr'
-      ? `FORMAT DE RÉPONSE: Utilisez le format Markdown. Pour chaque série proposée, incluez un aperçu visuel des photos avec la syntaxe Markdown: ![nom](url). Affichez les miniatures des photos côte à côte pour chaque série recommandée.`
-      : `RESPONSE FORMAT: Use Markdown format. For each proposed series, include a visual preview of the photos using Markdown syntax: ![name](url). Display photo thumbnails side by side for each recommended series.`;
+      ? `FORMAT DE RÉPONSE: Utilisez UNIQUEMENT du Markdown pur. N'utilisez JAMAIS de balises HTML (<div>, <img>, <span>, etc.). Pour afficher les photos, utilisez EXCLUSIVEMENT la syntaxe Markdown image: ![nom](url). Placez chaque image sur sa propre ligne.`
+      : `RESPONSE FORMAT: Use ONLY pure Markdown. NEVER use HTML tags (<div>, <img>, <span>, etc.). To display photos, use EXCLUSIVELY Markdown image syntax: ![name](url). Place each image on its own line.`;
 
+    const systemPrompt = `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
+
+    const userMessage = `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`;
+
+    // Use GPT-5.2 for global series analysis
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.2",
       messages: [
         {
           role: "system",
-          content: `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`
+          content: systemPrompt
         },
         {
           role: "user",
-          content: `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`
+          content: userMessage
         }
       ],
-      max_tokens: 2000
+      max_completion_tokens: 4096
     });
 
     return response.choices[0].message.content;

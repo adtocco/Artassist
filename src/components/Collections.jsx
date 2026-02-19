@@ -9,7 +9,7 @@ const ANALYSIS_TYPES = [
   { value: 'socialMedia', labelFr: 'Réseaux Sociaux', labelEn: 'Social Media' },
 ];
 
-export default function Collections({ lang = 'fr', onSelectCollection, onRefresh, userSettings = null }) {
+export default function Collections({ lang = 'fr', onSelectCollection, onRefresh, refreshTrigger = 0, userSettings = null }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -29,7 +29,7 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
 
   useEffect(() => {
     fetchCollections();
-  }, []);
+  }, [refreshTrigger]);
 
   const fetchCollections = async () => {
     try {

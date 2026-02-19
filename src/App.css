@@ -155,7 +155,10 @@
 .sidebar {
   position: sticky;
   top: 100px;
-  height: fit-content;
+  height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .main-content {
