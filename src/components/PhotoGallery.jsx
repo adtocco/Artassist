@@ -566,7 +566,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           disabled={analyzingSeries || photos.length < 2}
           className="analyze-series-button"
         >
-          {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Trouver une série' : 'Find Photo Series')}
+          {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Analyser la collection' : 'Analyze Collection')}
         </button>
       </div>
 
