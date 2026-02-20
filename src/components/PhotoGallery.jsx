@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { findPhotoSeries, analyzePhoto } from '../lib/openai';
+import { findPhotoSeries, analyzePhoto, PROMPT_PRESETS } from '../lib/openai';
 import './PhotoGallery.css';
+
+// Helper: resolve a preset ID to its label
+function getPresetLabel(presetId, lang = 'fr') {
+  if (!presetId) return null;
+  for (const type of Object.keys(PROMPT_PRESETS)) {
+    const preset = PROMPT_PRESETS[type].find(p => p.id === presetId);
+    if (preset) return lang === 'fr' ? preset.labelFr : preset.labelEn;
+  }
+  // Fallback: capitalize the ID
+  return presetId.charAt(0).toUpperCase() + presetId.slice(1);
+}
 
 // Simple Markdown renderer for images and text
 function renderMarkdown(text) {
@@ -94,6 +105,16 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [gridColumns, setGridColumns] = useState(4);
   const [createdSeriesNames, setCreatedSeriesNames] = useState(new Set());
+
+  // Analysis options modal state
+  const [showAnalysisOptions, setShowAnalysisOptions] = useState(false);
+  const [analysisOptionsMode, setAnalysisOptionsMode] = useState('collection'); // 'collection' or 'photo'
+  const [analysisPreset, setAnalysisPreset] = useState(null);
+  const [analysisDetailLevel, setAnalysisDetailLevel] = useState(null);
+  const [analysisTone, setAnalysisTone] = useState(null);
+  const [analysisCustomPrompt, setAnalysisCustomPrompt] = useState('');
+  const [photoAnalysisTargets, setPhotoAnalysisTargets] = useState([]); // photos to re-analyze
+  const [lastAnalysisPresetLabel, setLastAnalysisPresetLabel] = useState(null); // last used preset label for report header
 
   // Gallery-to-series drag state
   const [galleryDragPhotoId, setGalleryDragPhotoId] = useState(null);
@@ -609,6 +630,152 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     URL.revokeObjectURL(url);
   };
 
+  const openAnalysisOptions = (mode = 'collection', targets = []) => {
+    setAnalysisOptionsMode(mode);
+    setPhotoAnalysisTargets(targets);
+    const presetType = mode === 'series' ? 'series' : mode === 'photo' ? 'photo' : 'collection';
+    const presets = PROMPT_PRESETS[presetType];
+    const savedPromptField = mode === 'series' ? 'prompt_series_analysis' : mode === 'photo' ? 'prompt_photo_analysis' : 'prompt_collection_analysis';
+    const savedPrompt = userSettings?.[savedPromptField] || '';
+    let detectedPreset = presets[0].id;
+    if (savedPrompt) {
+      const match = presets.find(p => (p.prompt[lang] || p.prompt.fr).trim() === savedPrompt.trim());
+      detectedPreset = match ? match.id : 'custom';
+    }
+    setAnalysisPreset(detectedPreset);
+    setAnalysisDetailLevel(userSettings?.analysis_detail_level || 'balanced');
+    setAnalysisTone(userSettings?.analysis_tone || 'professional');
+    setAnalysisCustomPrompt(savedPrompt);
+    setShowAnalysisOptions(true);
+  };
+
+  const runAnalysisWithOptions = async () => {
+    setShowAnalysisOptions(false);
+
+    const presetType = analysisOptionsMode === 'series' ? 'series' : analysisOptionsMode === 'photo' ? 'photo' : 'collection';
+    const presets = PROMPT_PRESETS[presetType];
+    let promptValue = '';
+    if (analysisPreset === 'custom') {
+      promptValue = analysisCustomPrompt;
+    } else {
+      const preset = presets.find(p => p.id === analysisPreset);
+      if (preset) promptValue = preset.prompt[lang] || preset.prompt.fr;
+    }
+
+    if (analysisOptionsMode === 'photo') {
+      // Photo re-analysis with overridden settings
+      const overriddenSettings = {
+        ...userSettings,
+        prompt_photo_analysis: promptValue || userSettings?.prompt_photo_analysis || '',
+        analysis_detail_level: analysisDetailLevel || userSettings?.analysis_detail_level || 'balanced',
+        analysis_tone: analysisTone || userSettings?.analysis_tone || 'professional',
+      };
+      const resolvedPresetId = analysisPreset === 'custom' ? 'custom' : analysisPreset;
+      for (const photo of photoAnalysisTargets) {
+        setReanalyzingIds(prev => new Set(prev).add(photo.id));
+        try {
+          const { data: signedData } = await supabase.storage
+            .from('photos')
+            .createSignedUrl(photo.storage_path, 60);
+          const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
+          let collectionAnalysis = null;
+          if (selectedCollection?.id && selectedCollection.analysis_type) {
+            collectionAnalysis = { type: selectedCollection.analysis_type, instructions: selectedCollection.analysis_instructions };
+          }
+          const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, overriddenSettings);
+          await supabase.from('photo_analyses').update({
+            analysis: analysisResult.analysis,
+            photo_name: analysisResult.name,
+            prompt_type: resolvedPresetId,
+            analysis_detail_level: overriddenSettings.analysis_detail_level,
+            analysis_tone: overriddenSettings.analysis_tone,
+          }).eq('id', photo.id);
+          if (selectedCollection?.id && photo.collection_photo_id) {
+            await supabase.from('collection_photos').update({
+              analysis: analysisResult.analysis,
+              analysis_type: resolvedPresetId,
+              analysis_detail_level: overriddenSettings.analysis_detail_level,
+              analysis_tone: overriddenSettings.analysis_tone,
+            }).eq('id', photo.collection_photo_id);
+          }
+        } catch (err) {
+          console.error('Error re-analyzing photo:', err);
+        } finally {
+          setReanalyzingIds(prev => {
+            const next = new Set(prev);
+            next.delete(photo.id);
+            if (next.size === 0) fetchPhotos();
+            return next;
+          });
+        }
+      }
+      return;
+    }
+
+    if (analysisOptionsMode === 'series') {
+      // Series analysis with overridden settings
+      if (seriesPhotos.length < 2) {
+        alert(lang === 'fr' ? 'Il faut au moins 2 photos pour analyser une série' : 'You need at least 2 photos to analyze a series');
+        return;
+      }
+      const overriddenSettings = {
+        ...userSettings,
+        prompt_series_analysis: promptValue || userSettings?.prompt_series_analysis || '',
+        analysis_detail_level: analysisDetailLevel || userSettings?.analysis_detail_level || 'balanced',
+        analysis_tone: analysisTone || userSettings?.analysis_tone || 'professional',
+      };
+      setAnalyzingSeriesItem(true);
+      try {
+        const context = [activeSeries?.description, seriesInstructions].filter(Boolean).join('\n');
+        const result = await findPhotoSeries(seriesPhotos, lang, context, overriddenSettings, 'series');
+        setSeriesAnalysisResult(result);
+        // Track the preset label
+        const presetLabel = analysisPreset === 'custom'
+          ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
+          : getPresetLabel(analysisPreset, lang);
+        setLastAnalysisPresetLabel(presetLabel);
+        await supabase
+          .from('collection_series')
+          .update({ analysis: result, updated_at: new Date().toISOString() })
+          .eq('id', activeSeries.id);
+      } catch (err) {
+        console.error('Error analyzing series:', err);
+        alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
+      } finally {
+        setAnalyzingSeriesItem(false);
+      }
+      return;
+    }
+
+    // Collection analysis
+    if (photos.length < 2) {
+      alert('You need at least 2 photos to analyze series recommendations');
+      return;
+    }
+    const overriddenSettings = {
+      ...userSettings,
+      prompt_collection_analysis: promptValue || userSettings?.prompt_collection_analysis || '',
+      analysis_detail_level: analysisDetailLevel || userSettings?.analysis_detail_level || 'balanced',
+      analysis_tone: analysisTone || userSettings?.analysis_tone || 'professional',
+    };
+
+    setAnalyzingSeries(true);
+    try {
+      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions, overriddenSettings, 'collection');
+      setSeriesRecommendation(recommendation);
+      // Track the preset label for the report header
+      const presetLabel = analysisPreset === 'custom'
+        ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
+        : getPresetLabel(analysisPreset, lang);
+      setLastAnalysisPresetLabel(presetLabel);
+    } catch (err) {
+      console.error('Error analyzing series:', err);
+      alert('Error analyzing photo series: ' + err.message);
+    } finally {
+      setAnalyzingSeries(false);
+    }
+  };
+
   const analyzeCollection = async () => {
     if (photos.length < 2) {
       alert('You need at least 2 photos to analyze series recommendations');
@@ -976,7 +1143,12 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               📁 {lang === 'fr' ? 'Déplacer' : 'Move'}
             </button>
             <button 
-              onClick={reanalyzeBulk}
+              onClick={() => {
+                const ids = [...selectedPhotos];
+                const targets = photos.filter(p => ids.includes(p.id));
+                if (targets.length === 0) return;
+                openAnalysisOptions('photo', targets);
+              }}
               className="reanalyze-photos-btn"
               disabled={reanalyzingIds.size > 0}
             >
@@ -1023,7 +1195,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         {selectedCollection?.id && (
           <>
             <button 
-              onClick={analyzeCollection}
+              onClick={openAnalysisOptions}
               disabled={analyzingSeries || photos.length < 2}
               className="analyze-series-button"
             >
@@ -1105,6 +1277,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           return (
             <div className="series-recommendation">
               <h3>📊 {lang === 'fr' ? 'Analyse de la collection' : 'Collection Analysis'}</h3>
+              {lastAnalysisPresetLabel && (
+                <div className="analysis-style-badge">
+                  🎨 {lang === 'fr' ? 'Style' : 'Style'}: <strong>{lastAnalysisPresetLabel}</strong>
+                </div>
+              )}
 
               {/* Global analysis */}
               {parsed.global_analysis && (
@@ -1189,6 +1366,16 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 </>
               )}
 
+              {/* Custom instructions response */}
+              {parsed.custom_instructions_response && (
+                <div className="analysis-custom-response">
+                  <h4 className="analysis-section-title">📌 {lang === 'fr' ? 'Réponse à votre demande spécifique' : 'Response to Your Specific Request'}</h4>
+                  <div className="analysis-custom-response-content">
+                    <p>{parsed.custom_instructions_response}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="series-actions">
                 <button 
                   onClick={() => setShowSaveDialog(true)}
@@ -1211,6 +1398,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         return (
           <div className="series-recommendation">
             <h3>📊 Collection Analysis & Series Recommendations</h3>
+            {lastAnalysisPresetLabel && (
+              <div className="analysis-style-badge">
+                🎨 {lang === 'fr' ? 'Style' : 'Style'}: <strong>{lastAnalysisPresetLabel}</strong>
+              </div>
+            )}
             <div className="recommendation-content markdown-content">
               {renderMarkdown(seriesRecommendation)}
             </div>
@@ -1367,7 +1559,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             )}
             <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
             <div className="gallery-item-overlay">
-              <span className="prompt-badge">{photo.prompt_type}</span>
+              <span className="prompt-badge" title={photo.prompt_type}>{getPresetLabel(photo.prompt_type, lang)}</span>
               <span className="file-name">{photo.file_name}</span>
               <div className="thumbnail-actions">
                 <button
@@ -1508,6 +1700,17 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   ))}
                 </div>
 
+                {/* Analyze series button */}
+                <button
+                  className="analyze-series-item-btn"
+                  onClick={() => openAnalysisOptions('series')}
+                  disabled={analyzingSeriesItem || seriesPhotos.length < 2}
+                >
+                  {analyzingSeriesItem
+                    ? (lang === 'fr' ? '⏳ Analyse en cours...' : '⏳ Analyzing...')
+                    : (lang === 'fr' ? '🎯 Analyser la série' : '🎯 Analyze series')}
+                </button>
+
               </div>
             )}
           </aside>
@@ -1554,8 +1757,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                     {selectedPhoto.photo_name && (
                       <span className="modal-file-name">{selectedPhoto.file_name}</span>
                     )}
-                    <span className="modal-prompt-type">
-                      {selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type}
+                    <span className="modal-prompt-type" title={selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type}>
+                      {getPresetLabel(selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type, lang)}
                       {selectedPhoto.collection_analysis && (
                         <span className="collection-analysis-badge"> ({lang === 'fr' ? 'collection' : 'collection'})</span>
                       )}
@@ -1738,7 +1941,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               <div className="modal-actions">
                 <button 
                   className="reanalyze-button"
-                  onClick={(e) => reanalyzePhoto(selectedPhoto, e)}
+                  onClick={(e) => { e.stopPropagation(); openAnalysisOptions('photo', [selectedPhoto]); }}
                   disabled={reanalyzingIds.has(selectedPhoto.id)}
                 >
                   {reanalyzingIds.has(selectedPhoto.id) 
@@ -1757,6 +1960,149 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         </div>
         );
       })()}
+
+      {/* Analysis options modal */}
+      {showAnalysisOptions && (
+        <div className="modal-overlay" onClick={() => setShowAnalysisOptions(false)}>
+          <div className="analysis-options-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="analysis-options-header">
+              <h2>🎯 {analysisOptionsMode === 'photo'
+                ? (lang === 'fr' ? `Options d'analyse photo (${photoAnalysisTargets.length})` : `Photo Analysis Options (${photoAnalysisTargets.length})`)
+                : analysisOptionsMode === 'series'
+                  ? (lang === 'fr' ? `Options d'analyse de la série` : `Series Analysis Options`)
+                  : (lang === 'fr' ? 'Options d\'analyse de la collection' : 'Collection Analysis Options')}</h2>
+              <button className="modal-close" onClick={() => setShowAnalysisOptions(false)}>×</button>
+            </div>
+
+            <div className="analysis-options-body">
+              {/* Prompt preset selector */}
+              <div className="analysis-options-section">
+                <h3>📂 {lang === 'fr' ? 'Style d\'analyse' : 'Analysis Style'}</h3>
+                <div className="analysis-options-presets">
+                  {(PROMPT_PRESETS[analysisOptionsMode === 'series' ? 'series' : analysisOptionsMode === 'photo' ? 'photo' : 'collection'] || []).map(preset => (
+                    <label
+                      key={preset.id}
+                      className={`analysis-option-preset ${analysisPreset === preset.id ? 'active' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="analysis_preset"
+                        checked={analysisPreset === preset.id}
+                        onChange={() => {
+                          setAnalysisPreset(preset.id);
+                          setAnalysisCustomPrompt(preset.prompt[lang] || preset.prompt.fr);
+                        }}
+                      />
+                      <div className="analysis-option-content">
+                        <span className="analysis-option-title">{lang === 'fr' ? preset.labelFr : preset.labelEn}</span>
+                        <span className="analysis-option-desc">{lang === 'fr' ? preset.descFr : preset.descEn}</span>
+                      </div>
+                    </label>
+                  ))}
+                  <label
+                    className={`analysis-option-preset custom-option ${analysisPreset === 'custom' ? 'active' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="analysis_preset"
+                      checked={analysisPreset === 'custom'}
+                      onChange={() => setAnalysisPreset('custom')}
+                    />
+                    <div className="analysis-option-content">
+                      <span className="analysis-option-title">✏️ {lang === 'fr' ? 'Personnalisé' : 'Custom'}</span>
+                      <span className="analysis-option-desc">{lang === 'fr' ? 'Rédigez votre propre prompt' : 'Write your own prompt'}</span>
+                    </div>
+                  </label>
+                </div>
+
+                {analysisPreset === 'custom' && (
+                  <textarea
+                    className="analysis-options-textarea"
+                    value={analysisCustomPrompt}
+                    onChange={(e) => setAnalysisCustomPrompt(e.target.value)}
+                    placeholder={lang === 'fr' ? 'Votre prompt personnalisé...' : 'Your custom prompt...'}
+                    rows={5}
+                  />
+                )}
+              </div>
+
+              {/* Detail level + Tone in a row */}
+              <div className="analysis-options-row">
+                <div className="analysis-options-section analysis-options-half">
+                  <h3>{lang === 'fr' ? 'Niveau de détail' : 'Detail Level'}</h3>
+                  <div className="analysis-options-chips">
+                    {[
+                      { value: 'concise', label: '📝', fr: 'Concis', en: 'Concise' },
+                      { value: 'balanced', label: '⚖️', fr: 'Équilibré', en: 'Balanced' },
+                      { value: 'detailed', label: '📚', fr: 'Détaillé', en: 'Detailed' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`analysis-chip ${analysisDetailLevel === opt.value ? 'active' : ''}`}
+                        onClick={() => setAnalysisDetailLevel(opt.value)}
+                      >
+                        {opt.label} {lang === 'fr' ? opt.fr : opt.en}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="analysis-options-section analysis-options-half">
+                  <h3>{lang === 'fr' ? 'Ton' : 'Tone'}</h3>
+                  <div className="analysis-options-chips">
+                    {[
+                      { value: 'professional', label: '💼', fr: 'Professionnel', en: 'Professional' },
+                      { value: 'friendly', label: '😊', fr: 'Amical', en: 'Friendly' },
+                      { value: 'technical', label: '🔧', fr: 'Technique', en: 'Technical' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`analysis-chip ${analysisTone === opt.value ? 'active' : ''}`}
+                        onClick={() => setAnalysisTone(opt.value)}
+                      >
+                        {opt.label} {lang === 'fr' ? opt.fr : opt.en}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions / context - collection & series modes */}
+              {(analysisOptionsMode === 'collection' || analysisOptionsMode === 'series') && (
+                <div className="analysis-options-section">
+                  <h3>{lang === 'fr' ? 'Instructions supplémentaires' : 'Additional instructions'}</h3>
+                  <textarea
+                    className="analysis-options-textarea small"
+                    value={seriesInstructions}
+                    onChange={(e) => setSeriesInstructions(e.target.value)}
+                    placeholder={analysisOptionsMode === 'series'
+                      ? (lang === 'fr' ? 'Ex: analyser la cohérence et proposer un ordre optimal...' : 'E.g. analyze coherence and suggest optimal order...')
+                      : (lang === 'fr' ? 'Ex: je cherche des séries pour une exposition sur le thème de la nature...' : 'E.g. I\'m looking for series for a nature-themed exhibition...')}
+                    rows={3}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="analysis-options-footer">
+              <button className="analysis-options-cancel" onClick={() => setShowAnalysisOptions(false)}>
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+              <button
+                className="analysis-options-run"
+                onClick={runAnalysisWithOptions}
+                disabled={analysisOptionsMode === 'collection' ? photos.length < 2 : analysisOptionsMode === 'series' ? seriesPhotos.length < 2 : photoAnalysisTargets.length === 0}
+              >
+                🎯 {analysisOptionsMode === 'photo'
+                  ? (lang === 'fr' ? `Analyser ${photoAnalysisTargets.length} photo${photoAnalysisTargets.length > 1 ? 's' : ''}` : `Analyze ${photoAnalysisTargets.length} photo${photoAnalysisTargets.length > 1 ? 's' : ''}`)
+                  : analysisOptionsMode === 'series'
+                    ? (lang === 'fr' ? `Analyser la série (${seriesPhotos.length} photos)` : `Analyze series (${seriesPhotos.length} photos)`)
+                    : (lang === 'fr' ? `Lancer l'analyse (${photos.length} photos)` : `Run Analysis (${photos.length} photos)`)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

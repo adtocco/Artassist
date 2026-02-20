@@ -268,6 +268,41 @@ Analyze this group of photos as a coherent series. Evaluate visual consistency, 
         en: `You are an art psychologist specialized in the emotional impact of photography. Analyze this series focusing on the emotional journey it proposes. Identify the emotions evoked by each photo, how they respond to each other, visual tensions and resolutions. Propose an arrangement that maximizes the emotional arc and viewer impact.`
       }
     }
+  ],
+  wall: [
+    {
+      id: 'curator',
+      labelFr: '🏛️ Scénographie d\'exposition',
+      labelEn: '🏛️ Exhibition Scenography',
+      descFr: 'Évalue la disposition spatiale, l\'équilibre visuel et la cohérence de l\'accrochage',
+      descEn: 'Evaluates spatial layout, visual balance and hanging coherence',
+      prompt: {
+        fr: `Vous êtes un scénographe d'exposition expert. Analysez la disposition des photographies sur ce mur en tenant compte de leurs positions, tailles, espacements et encadrements. Évaluez l'équilibre visuel, la hiérarchie des œuvres, la circulation du regard du spectateur, et proposez des améliorations concrètes pour optimiser l'accrochage.`,
+        en: `You are an expert exhibition scenographer. Analyze the arrangement of photographs on this wall considering their positions, sizes, spacing and framing. Evaluate visual balance, work hierarchy, viewer's gaze flow, and propose concrete improvements to optimize the hanging.`
+      }
+    },
+    {
+      id: 'spatial',
+      labelFr: '📐 Analyse spatiale',
+      labelEn: '📐 Spatial Analysis',
+      descFr: 'Analyse les proportions, alignements, espaces négatifs et rapports d\'échelle',
+      descEn: 'Analyzes proportions, alignments, negative space and scale relationships',
+      prompt: {
+        fr: `Vous êtes un architecte d'intérieur spécialisé dans l'accrochage d'art. Analysez la disposition technique de ce mur : alignements (horizontaux, verticaux, centraux), espaces négatifs entre les œuvres, rapport taille des œuvres / surface du mur, hauteur d'accrochage par rapport à la ligne des yeux (environ 160cm). Proposez des ajustements précis en centimètres si nécessaire.`,
+        en: `You are an interior architect specialized in art hanging. Analyze the technical layout of this wall: alignments (horizontal, vertical, central), negative space between works, work size to wall surface ratio, hanging height relative to eye level (about 160cm). Propose precise adjustments in centimeters if needed.`
+      }
+    },
+    {
+      id: 'dialogue',
+      labelFr: '💬 Dialogue des œuvres',
+      labelEn: '💬 Work Dialogue',
+      descFr: 'Analyse comment les photos interagissent visuellement selon leur placement',
+      descEn: 'Analyzes how photos visually interact based on their placement',
+      prompt: {
+        fr: `Vous êtes un critique d'art spécialisé dans la mise en espace des photographies. Analysez comment les œuvres dialoguent entre elles sur ce mur : les proximités créent-elles des associations de sens ? Les contrastes de taille ou de sujet sont-ils intentionnels et efficaces ? La disposition raconte-t-elle une histoire ? Proposez des réarrangements qui renforceraient le dialogue visuel.`,
+        en: `You are an art critic specialized in photographic spatial arrangement. Analyze how the works dialogue with each other on this wall: do the proximities create meaningful associations? Are the contrasts in size or subject intentional and effective? Does the arrangement tell a story? Propose rearrangements that would strengthen the visual dialogue.`
+      }
+    }
   ]
 };
 
@@ -591,6 +626,8 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', 
           : `Additional instructions for the series analysis: ${instructions}`)
       : '';
 
+    const hasCustomInstructions = instructions && instructions.trim();
+
     const namingInstruction = lang === 'fr'
       ? `IMPORTANT: Utilisez TOUJOURS les noms exacts des photos (${photoNames}) pour les identifier, jamais "Photo 1", "Photo 2", etc.`
       : `IMPORTANT: ALWAYS use the exact photo names (${photoNames}) to identify them, never "Photo 1", "Photo 2", etc.`;
@@ -605,6 +642,23 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', 
       basePrompt = lang === 'fr'
         ? `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.`
         : `You are an expert art curator analyzing a collection of photographs.\nYour task is to identify which photos work well together as a series, which ones are the most interesting individually, and to provide clear reasons for your recommendations.`;
+    }
+
+    // Apply detail level and tone modifiers
+    let styleModifiers = '';
+    if (userSettings) {
+      const detailLevel = userSettings.analysis_detail_level || 'balanced';
+      const tone = userSettings.analysis_tone || 'professional';
+      if (detailLevel === 'concise') {
+        styleModifiers += lang === 'fr' ? '\nSTYLE : Soyez concis et direct. Limitez chaque section à 1-2 phrases maximum.' : '\nSTYLE: Be concise and direct. Limit each section to 1-2 sentences maximum.';
+      } else if (detailLevel === 'detailed') {
+        styleModifiers += lang === 'fr' ? '\nSTYLE : Fournissez une analyse approfondie et détaillée. Développez chaque aspect avec précision.' : '\nSTYLE: Provide a thorough and detailed analysis. Develop each aspect with precision.';
+      }
+      if (tone === 'friendly') {
+        styleModifiers += lang === 'fr' ? '\nTON : Adoptez un ton amical, encourageant et accessible. Utilisez un langage chaleureux.' : '\nTONE: Use a friendly, encouraging and accessible tone. Use warm language.';
+      } else if (tone === 'technical') {
+        styleModifiers += lang === 'fr' ? '\nTON : Utilisez des termes techniques précis. Soyez spécifique sur les aspects artistiques et techniques.' : '\nTONE: Use precise technical terms. Be specific about artistic and technical aspects.';
+      }
     }
 
     // For collection analysis: request structured JSON
@@ -626,7 +680,8 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', 
       "reason": "Pourquoi cette photo est remarquable individuellement"
     }
   ],
-  "global_analysis": "Analyse globale de la collection (3-5 phrases) : cohérence, forces, axes d'amélioration, recommandations de présentation"
+  "global_analysis": "Analyse globale de la collection (3-5 phrases) : cohérence, forces, axes d'amélioration, recommandations de présentation"${hasCustomInstructions ? `,
+  "custom_instructions_response": "Réponse détaillée aux instructions spécifiques de l'utilisateur (3-6 phrases). Adressez PRÉCISÉMENT la demande : ${instructions.trim().replace(/"/g, '\\"')}"` : ''}
 }
 
 Règles:
@@ -652,7 +707,8 @@ Règles:
       "reason": "Why this photo is individually remarkable"
     }
   ],
-  "global_analysis": "Global analysis of the collection (3-5 sentences): coherence, strengths, improvements, presentation recommendations"
+  "global_analysis": "Global analysis of the collection (3-5 sentences): coherence, strengths, improvements, presentation recommendations"${hasCustomInstructions ? `,
+  "custom_instructions_response": "Detailed response to the user's specific instructions (3-6 sentences). Address PRECISELY the request: ${instructions.trim().replace(/"/g, '\\"')}"` : ''}
 }
 
 Rules:
@@ -663,7 +719,7 @@ Rules:
 - Each photo can appear in multiple series
 - Do NOT propose a series with only one photo`;
 
-      const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${jsonInstruction}\n\n${languageNote}`;
+      const systemPrompt = `${basePrompt}${styleModifiers}\n\n${namingInstruction}\n\n${jsonInstruction}\n\n${languageNote}`;
       const userMessage = `${instructionNote}\n\nAnalyses des photos de la collection:\n${analysisTexts}`;
 
       const response = await openai.chat.completions.create({
@@ -691,7 +747,7 @@ Rules:
       ? `FORMAT DE RÉPONSE: Utilisez UNIQUEMENT du Markdown pur. N'utilisez JAMAIS de balises HTML (<div>, <img>, <span>, etc.). Pour afficher les photos, utilisez EXCLUSIVEMENT la syntaxe Markdown image: ![nom](url). Placez chaque image sur sa propre ligne.`
       : `RESPONSE FORMAT: Use ONLY pure Markdown. NEVER use HTML tags (<div>, <img>, <span>, etc.). To display photos, use EXCLUSIVELY Markdown image syntax: ![name](url). Place each image on its own line.`;
 
-    const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
+    const systemPrompt = `${basePrompt}${styleModifiers}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
     const userMessage = `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`;
 
     const response = await openai.chat.completions.create({
@@ -706,6 +762,85 @@ Rules:
     return response.choices[0].message.content;
   } catch (error) {
     console.error('Error finding photo series:', error);
+    throw error;
+  }
+}
+
+/**
+ * Analyze a wall layout — positions, sizes, frames of photos on a wall.
+ */
+export async function analyzeWall(wallData, lang = 'fr', instructions = '', userSettings = null) {
+  try {
+    const { wallName, wallWidthCm, wallHeightCm, backgroundColor, items: wallItems } = wallData;
+
+    // Build layout description for each item
+    const itemDescriptions = wallItems.map((item, idx) => {
+      const name = item.photoName || item.fileName || `Photo ${idx + 1}`;
+      const widthCm = item.widthCm;
+      const heightCm = item.heightCm;
+      const xCm = item.xCm;
+      const yCm = item.yCm;
+      const centerXCm = xCm + widthCm / 2;
+      const centerYCm = yCm + heightCm / 2;
+      const frame = item.frameColor && item.frameWidthCm > 0
+        ? `cadre ${item.frameColor} de ${item.frameWidthCm} cm`
+        : 'sans cadre';
+      const mat = item.matWidthCm > 0
+        ? `passe-partout ${item.matColor || '#ffffff'} de ${item.matWidthCm} cm`
+        : '';
+      const analysis = item.analysis || '';
+      return `- "${name}" : ${widthCm.toFixed(1)}×${heightCm.toFixed(1)} cm, position centre (${centerXCm.toFixed(1)}, ${centerYCm.toFixed(1)}) cm depuis coin haut-gauche, ${frame}${mat ? `, ${mat}` : ''}${analysis ? `\n  Analyse : ${analysis.substring(0, 300)}` : ''}`;
+    }).join('\n');
+
+    const languageNote = lang && lang !== 'en' ? `Veuillez répondre en ${lang === 'fr' ? 'français' : lang}.` : 'Please respond in English.';
+
+    let basePrompt;
+    if (userSettings?.prompt_wall_analysis) {
+      basePrompt = userSettings.prompt_wall_analysis;
+    } else {
+      basePrompt = lang === 'fr'
+        ? `Vous êtes un scénographe d'exposition expert. Analysez la disposition des photographies sur ce mur en tenant compte de leurs positions, tailles, espacements et encadrements.`
+        : `You are an expert exhibition scenographer. Analyze the arrangement of photographs on this wall considering their positions, sizes, spacing and framing.`;
+    }
+
+    // Apply detail level and tone modifiers
+    const detailLevel = userSettings?.analysis_detail_level || 'balanced';
+    const tone = userSettings?.analysis_tone || 'professional';
+    let modifiers = '';
+    if (detailLevel === 'concise') modifiers += lang === 'fr' ? '\nSoyez concis et allez à l\'essentiel.' : '\nBe concise and to the point.';
+    else if (detailLevel === 'detailed') modifiers += lang === 'fr' ? '\nFournissez une analyse très détaillée et approfondie.' : '\nProvide a very detailed and thorough analysis.';
+    if (tone === 'friendly') modifiers += lang === 'fr' ? '\nUtilisez un ton amical et accessible.' : '\nUse a friendly and accessible tone.';
+    else if (tone === 'technical') modifiers += lang === 'fr' ? '\nUtilisez un ton technique et précis.' : '\nUse a technical and precise tone.';
+
+    const instructionNote = instructions && instructions.trim()
+      ? (lang === 'fr'
+          ? `\nInstructions supplémentaires : ${instructions}`
+          : `\nAdditional instructions: ${instructions}`)
+      : '';
+
+    const wallDescription = lang === 'fr'
+      ? `Mur "${wallName}" : ${(wallWidthCm / 100).toFixed(2)} m × ${(wallHeightCm / 100).toFixed(2)} m, couleur de fond : ${backgroundColor}\n${wallItems.length} photos disposées :\n${itemDescriptions}`
+      : `Wall "${wallName}": ${(wallWidthCm / 100).toFixed(2)} m × ${(wallHeightCm / 100).toFixed(2)} m, background color: ${backgroundColor}\n${wallItems.length} photos arranged:\n${itemDescriptions}`;
+
+    const markdownInstruction = lang === 'fr'
+      ? `FORMAT DE RÉPONSE: Utilisez du Markdown pur. Structurez votre analyse avec des titres ## et des sous-sections. N'utilisez JAMAIS de balises HTML. Soyez synthétique : chaque section doit faire 2-3 phrases maximum. Privilégiez la qualité à la quantité.`
+      : `RESPONSE FORMAT: Use pure Markdown. Structure your analysis with ## headings and sub-sections. NEVER use HTML tags. Be concise: each section should be 2-3 sentences maximum. Prioritize quality over quantity.`;
+
+    const systemPrompt = `${basePrompt}${modifiers}\n\n${markdownInstruction}\n\n${languageNote}`;
+    const userMessage = `${instructionNote}\n\n${wallDescription}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5.2",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ],
+      max_completion_tokens: 1500
+    });
+
+    return response.choices[0].message.content;
+  } catch (error) {
+    console.error('Error analyzing wall:', error);
     throw error;
   }
 }

@@ -1,12 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { analyzeWall, PROMPT_PRESETS } from '../lib/openai';
 import './WallView.css';
 
 const PX_PER_CM = 5;
 const DEFAULT_W = 300;
 const MIN_W = 60;
 
-export default function WallView({ photos, initialPhotoIds, userSession, lang = 'fr', onClearInitial }) {
+export default function WallView({ photos, initialPhotoIds, userSession, lang = 'fr', userSettings, onClearInitial }) {
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const interactionRef = useRef(null);
@@ -46,6 +47,16 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
   const [collections, setCollections] = useState([]);
   const [pickerFilter, setPickerFilter] = useState('all');
   const [pickerSelected, setPickerSelected] = useState(new Set());
+  // Wall analysis
+  const [analyzingWall, setAnalyzingWall] = useState(false);
+  const [wallAnalysisResult, setWallAnalysisResult] = useState(null);
+  const [showWallAnalysis, setShowWallAnalysis] = useState(false);
+  const [showWallAnalysisOptions, setShowWallAnalysisOptions] = useState(false);
+  const [wallAnalysisPreset, setWallAnalysisPreset] = useState('curator');
+  const [wallAnalysisDetailLevel, setWallAnalysisDetailLevel] = useState('balanced');
+  const [wallAnalysisTone, setWallAnalysisTone] = useState('professional');
+  const [wallAnalysisCustomPrompt, setWallAnalysisCustomPrompt] = useState('');
+  const [wallAnalysisInstructions, setWallAnalysisInstructions] = useState('');
 
   // Load walls on mount
   useEffect(() => {
@@ -278,6 +289,16 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     }).eq('id', itemId);
   }
 
+  async function updateItemMat(itemId, matColor, matWidthCm) {
+    setItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, mat_color: matColor, mat_width_cm: matWidthCm } : i
+    ));
+    await supabase.from('wall_items').update({
+      mat_color: matColor,
+      mat_width_cm: matWidthCm,
+    }).eq('id', itemId);
+  }
+
   async function deleteSelected() {
     if (!selectedId) return;
     await supabase.from('wall_items').delete().eq('id', selectedId);
@@ -375,6 +396,103 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     } else {
       document.exitFullscreen?.();
     }
+  }
+
+  // ─── Wall analysis ───────────────────────────────────────────────
+
+  function openWallAnalysisOptions() {
+    const presets = PROMPT_PRESETS.wall;
+    const savedPrompt = userSettings?.prompt_wall_analysis || '';
+    let detectedPreset = presets[0].id;
+    if (savedPrompt) {
+      const match = presets.find(p => (p.prompt[lang] || p.prompt.fr).trim() === savedPrompt.trim());
+      detectedPreset = match ? match.id : 'custom';
+    }
+    setWallAnalysisPreset(detectedPreset);
+    setWallAnalysisDetailLevel(userSettings?.analysis_detail_level || 'balanced');
+    setWallAnalysisTone(userSettings?.analysis_tone || 'professional');
+    setWallAnalysisCustomPrompt(savedPrompt);
+    setWallAnalysisInstructions('');
+    setShowWallAnalysisOptions(true);
+  }
+
+  async function runWallAnalysis() {
+    setShowWallAnalysisOptions(false);
+    if (items.length === 0) return;
+
+    const presets = PROMPT_PRESETS.wall;
+    let promptValue = '';
+    if (wallAnalysisPreset === 'custom') {
+      promptValue = wallAnalysisCustomPrompt;
+    } else {
+      const preset = presets.find(p => p.id === wallAnalysisPreset);
+      if (preset) promptValue = preset.prompt[lang] || preset.prompt.fr;
+    }
+
+    const overriddenSettings = {
+      ...userSettings,
+      prompt_wall_analysis: promptValue || '',
+      analysis_detail_level: wallAnalysisDetailLevel || 'balanced',
+      analysis_tone: wallAnalysisTone || 'professional',
+    };
+
+    const cpp = getCmPerPixel();
+    const wallItems = items.map(item => {
+      const photo = getPhoto(item.photo_id);
+      const aspect = getAspect(item.photo_id);
+      const wPx = item.width;
+      const hPx = wPx * aspect;
+      return {
+        photoName: photo?.photo_name || photo?.file_name || 'Sans titre',
+        fileName: photo?.file_name || '',
+        widthCm: +(wPx * cpp).toFixed(1),
+        heightCm: +(hPx * cpp).toFixed(1),
+        xCm: +(item.pos_x * cpp).toFixed(1),
+        yCm: +(item.pos_y * cpp).toFixed(1),
+        frameColor: item.frame_color || null,
+        frameWidthCm: item.frame_width_cm || 0,
+        matColor: item.mat_color || null,
+        matWidthCm: item.mat_width_cm || 0,
+        analysis: photo?.analysis || '',
+      };
+    });
+
+    const wallData = {
+      wallName: activeWall.name,
+      wallWidthCm: activeWall.physical_width_cm || 600,
+      wallHeightCm: activeWall.physical_height_cm || 220,
+      backgroundColor: activeWall.background_color || '#ffffff',
+      items: wallItems,
+    };
+
+    setAnalyzingWall(true);
+    try {
+      const result = await analyzeWall(wallData, lang, wallAnalysisInstructions, overriddenSettings);
+      setWallAnalysisResult(result);
+      setShowWallAnalysis(true);
+    } catch (err) {
+      console.error('Error analyzing wall:', err);
+      alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
+    } finally {
+      setAnalyzingWall(false);
+    }
+  }
+
+  // Simple markdown to HTML renderer
+  function renderMarkdown(md) {
+    if (!md) return '';
+    return md
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/<\/ul>\s*<ul>/g, '')
+      .replace(/\n{2,}/g, '<br><br>')
+      .replace(/\n/g, '<br>');
   }
 
   // ─── Wall settings ──────────────────────────────────────────
@@ -743,6 +861,16 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
           <button className="wall-add-photos-btn" onClick={openPhotoPicker}>
             ➕ {lang === 'fr' ? 'Ajouter' : 'Add'}
           </button>
+          <button
+            className="wall-analyze-btn"
+            onClick={openWallAnalysisOptions}
+            disabled={analyzingWall || items.length === 0}
+            title={lang === 'fr' ? 'Analyser la disposition du mur' : 'Analyze wall layout'}
+          >
+            {analyzingWall
+              ? (lang === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...')
+              : (lang === 'fr' ? '🎯 Analyser' : '🎯 Analyze')}
+          </button>
           <span className="wall-item-count">{items.length} photo{items.length !== 1 ? 's' : ''}</span>
           <span className="wall-toolbar-sep">|</span>
           <button className="wall-delete-wall-btn" onClick={() => deleteWall(activeWall.id)}>
@@ -797,6 +925,38 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                 >✕</button>
               )}
             </div>
+            {(selItem.frame_width_cm > 0) && (
+              <div className="wall-toolbar-mat">
+                <span className="wall-mat-label">{lang === 'fr' ? 'Passe-partout' : 'Mat'}</span>
+                <input
+                  type="color"
+                  className="wall-frame-color-input"
+                  value={selItem.mat_color || '#ffffff'}
+                  onChange={(e) => updateItemMat(selItem.id, e.target.value, selItem.mat_width_cm ?? 0)}
+                  title={lang === 'fr' ? 'Couleur du passe-partout' : 'Mat color'}
+                />
+                <div className="wall-frame-thickness">
+                  <input
+                    type="number"
+                    className="wall-frame-thickness-input"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={selItem.mat_width_cm ?? 0}
+                    onChange={(e) => updateItemMat(selItem.id, selItem.mat_color || '#ffffff', parseFloat(e.target.value) || 0)}
+                    title={lang === 'fr' ? 'Largeur en cm' : 'Width in cm'}
+                  />
+                  <span className="wall-frame-unit">cm</span>
+                </div>
+                {(selItem.mat_width_cm > 0) && (
+                  <button
+                    className="wall-frame-remove-btn"
+                    onClick={() => updateItemMat(selItem.id, '#ffffff', 0)}
+                    title={lang === 'fr' ? 'Retirer le passe-partout' : 'Remove mat'}
+                  >✕</button>
+                )}
+              </div>
+            )}
             <div className="wall-toolbar-secondary-right">
               <button className="wall-delete-item-btn" onClick={deleteSelected}>
                 🗑 {lang === 'fr' ? 'Supprimer photo' : 'Delete photo'}
@@ -847,7 +1007,15 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                   width: item.width,
                   height: h,
                   zIndex: item.z_index,
-                  ...(item.frame_width_cm > 0 ? {
+                  ...(item.frame_width_cm > 0 && item.mat_width_cm > 0 ? {
+                    // Mat as border (outside photo, preserves proportions)
+                    borderWidth: item.mat_width_cm * PX_PER_CM,
+                    borderStyle: 'solid',
+                    borderColor: item.mat_color || '#ffffff',
+                    // Frame as outline (wraps around the mat)
+                    outline: `${item.frame_width_cm * PX_PER_CM}px solid ${item.frame_color || '#3a2a1a'}`,
+                    borderRadius: 1,
+                  } : item.frame_width_cm > 0 ? {
                     borderWidth: item.frame_width_cm * PX_PER_CM,
                     borderStyle: 'solid',
                     borderColor: item.frame_color || '#3a2a1a',
@@ -1058,6 +1226,156 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
           ? 'Cliquer-glisser pour déplacer • Poignées pour redimensionner • Molette pour zoomer • Glisser le fond pour naviguer • Suppr pour retirer'
           : 'Drag to move • Handles to resize • Scroll to zoom • Drag background to pan • Delete to remove'}
       </div>
+
+      {/* Wall analysis result panel */}
+      {showWallAnalysis && wallAnalysisResult && (
+        <div className="wall-analysis-overlay" onClick={() => setShowWallAnalysis(false)}>
+          <div className="wall-analysis-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wall-analysis-header">
+              <h3>🎯 {lang === 'fr' ? 'Analyse du mur' : 'Wall Analysis'} — {activeWall?.name}</h3>
+              <button className="modal-close" onClick={() => setShowWallAnalysis(false)}>×</button>
+            </div>
+            <div className="wall-analysis-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(wallAnalysisResult) }} />
+            <div className="wall-analysis-footer">
+              <button className="wall-analysis-close-btn" onClick={() => setShowWallAnalysis(false)}>
+                {lang === 'fr' ? 'Fermer' : 'Close'}
+              </button>
+              <button className="wall-analysis-redo-btn" onClick={openWallAnalysisOptions}>
+                🔄 {lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wall analysis options modal */}
+      {showWallAnalysisOptions && (
+        <div className="wall-analysis-overlay" onClick={() => setShowWallAnalysisOptions(false)}>
+          <div className="wall-analysis-options-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wall-analysis-options-header">
+              <h2>🎯 {lang === 'fr' ? `Options d'analyse du mur (${items.length} photos)` : `Wall Analysis Options (${items.length} photos)`}</h2>
+              <button className="modal-close" onClick={() => setShowWallAnalysisOptions(false)}>×</button>
+            </div>
+
+            <div className="wall-analysis-options-body">
+              {/* Preset selector */}
+              <div className="analysis-options-section">
+                <h3>📂 {lang === 'fr' ? 'Style d\'analyse' : 'Analysis Style'}</h3>
+                <div className="analysis-options-presets">
+                  {PROMPT_PRESETS.wall.map(preset => (
+                    <label
+                      key={preset.id}
+                      className={`analysis-option-preset ${wallAnalysisPreset === preset.id ? 'active' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="wall_analysis_preset"
+                        checked={wallAnalysisPreset === preset.id}
+                        onChange={() => {
+                          setWallAnalysisPreset(preset.id);
+                          setWallAnalysisCustomPrompt(preset.prompt[lang] || preset.prompt.fr);
+                        }}
+                      />
+                      <div className="analysis-option-content">
+                        <span className="analysis-option-title">{lang === 'fr' ? preset.labelFr : preset.labelEn}</span>
+                        <span className="analysis-option-desc">{lang === 'fr' ? preset.descFr : preset.descEn}</span>
+                      </div>
+                    </label>
+                  ))}
+                  <label className={`analysis-option-preset custom-option ${wallAnalysisPreset === 'custom' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="wall_analysis_preset"
+                      checked={wallAnalysisPreset === 'custom'}
+                      onChange={() => setWallAnalysisPreset('custom')}
+                    />
+                    <div className="analysis-option-content">
+                      <span className="analysis-option-title">✏️ {lang === 'fr' ? 'Personnalisé' : 'Custom'}</span>
+                      <span className="analysis-option-desc">{lang === 'fr' ? 'Rédigez votre propre prompt' : 'Write your own prompt'}</span>
+                    </div>
+                  </label>
+                </div>
+
+                {wallAnalysisPreset === 'custom' && (
+                  <textarea
+                    className="analysis-options-textarea"
+                    value={wallAnalysisCustomPrompt}
+                    onChange={(e) => setWallAnalysisCustomPrompt(e.target.value)}
+                    placeholder={lang === 'fr' ? 'Votre prompt personnalisé...' : 'Your custom prompt...'}
+                    rows={5}
+                  />
+                )}
+              </div>
+
+              {/* Detail level + Tone */}
+              <div className="analysis-options-row">
+                <div className="analysis-options-section analysis-options-half">
+                  <h3>{lang === 'fr' ? 'Niveau de détail' : 'Detail Level'}</h3>
+                  <div className="analysis-options-chips">
+                    {[
+                      { value: 'concise', label: '📝', fr: 'Concis', en: 'Concise' },
+                      { value: 'balanced', label: '⚖️', fr: 'Équilibré', en: 'Balanced' },
+                      { value: 'detailed', label: '📚', fr: 'Détaillé', en: 'Detailed' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`analysis-chip ${wallAnalysisDetailLevel === opt.value ? 'active' : ''}`}
+                        onClick={() => setWallAnalysisDetailLevel(opt.value)}
+                      >
+                        {opt.label} {lang === 'fr' ? opt.fr : opt.en}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="analysis-options-section analysis-options-half">
+                  <h3>{lang === 'fr' ? 'Ton' : 'Tone'}</h3>
+                  <div className="analysis-options-chips">
+                    {[
+                      { value: 'professional', label: '💼', fr: 'Professionnel', en: 'Professional' },
+                      { value: 'friendly', label: '😊', fr: 'Amical', en: 'Friendly' },
+                      { value: 'technical', label: '🔧', fr: 'Technique', en: 'Technical' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        className={`analysis-chip ${wallAnalysisTone === opt.value ? 'active' : ''}`}
+                        onClick={() => setWallAnalysisTone(opt.value)}
+                      >
+                        {opt.label} {lang === 'fr' ? opt.fr : opt.en}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="analysis-options-section">
+                <h3>{lang === 'fr' ? 'Instructions supplémentaires' : 'Additional instructions'}</h3>
+                <textarea
+                  className="analysis-options-textarea small"
+                  value={wallAnalysisInstructions}
+                  onChange={(e) => setWallAnalysisInstructions(e.target.value)}
+                  placeholder={lang === 'fr' ? 'Ex: je prépare une exposition sur le thème de la nature, évaluer si la disposition raconte une histoire...' : 'E.g. I\'m preparing a nature-themed exhibition, evaluate if the layout tells a story...'}
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <div className="wall-analysis-options-footer">
+              <button className="analysis-options-cancel" onClick={() => setShowWallAnalysisOptions(false)}>
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+              <button
+                className="analysis-options-run"
+                onClick={runWallAnalysis}
+                disabled={items.length === 0}
+              >
+                🎯 {lang === 'fr' ? `Analyser le mur (${items.length} photos)` : `Analyze wall (${items.length} photos)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -225,6 +225,7 @@ function App() {
             initialPhotoIds={wallInitialPhotos}
             userSession={session}
             lang={lang}
+            userSettings={userSettings}
             onClearInitial={() => setWallInitialPhotos(null)}
           />
         ) : activeTab === 'collections' ? (

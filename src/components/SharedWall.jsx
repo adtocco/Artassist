@@ -178,6 +178,18 @@ export default function SharedWall({ shareToken }) {
                   width: item.width,
                   height: h,
                   zIndex: item.z_index,
+                  ...(item.frame_width_cm > 0 && item.mat_width_cm > 0 ? {
+                    borderWidth: item.mat_width_cm * PX_PER_CM,
+                    borderStyle: 'solid',
+                    borderColor: item.mat_color || '#ffffff',
+                    outline: `${item.frame_width_cm * PX_PER_CM}px solid ${item.frame_color || '#3a2a1a'}`,
+                    borderRadius: 1,
+                  } : item.frame_width_cm > 0 ? {
+                    borderWidth: item.frame_width_cm * PX_PER_CM,
+                    borderStyle: 'solid',
+                    borderColor: item.frame_color || '#3a2a1a',
+                    borderRadius: 1,
+                  } : {}),
                 }}
               >
                 <img
