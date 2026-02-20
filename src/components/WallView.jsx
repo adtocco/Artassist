@@ -153,6 +153,9 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     setActiveWall(wall);
     setWallName(wall.name);
     setShareLink(wall.share_token ? `${window.location.origin}/wall/${wall.share_token}` : null);
+    // Load saved analysis
+    setWallAnalysisResult(wall.analysis || null);
+    setShowWallAnalysis(false);
     const { data } = await supabase
       .from('wall_items')
       .select('*')
@@ -473,10 +476,16 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
       type: 'wall',
       title: activeWall?.name || (lang === 'fr' ? 'Mur' : 'Wall'),
       execute: () => analyzeWall(wallData, lang, wallAnalysisInstructions, overriddenSettings),
-      onComplete: (result) => {
+      onComplete: async (result) => {
         setWallAnalysisResult(result);
         setShowWallAnalysis(true);
         setAnalyzingWall(false);
+        // Persist to DB
+        await supabase
+          .from('walls')
+          .update({ analysis: result, updated_at: new Date().toISOString() })
+          .eq('id', activeWall.id);
+        setActiveWall(prev => ({ ...prev, analysis: result }));
       },
       onError: () => {
         setAnalyzingWall(false);
@@ -484,11 +493,64 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     });
   }
 
-  // Simple markdown to HTML renderer
+  // Simple markdown to HTML renderer (with table support)
   function renderMarkdown(md) {
     if (!md) return '';
-    return md
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    const lines = md.split('\n');
+    const out = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      // Detect markdown table: line with pipes
+      if (lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        // Collect all consecutive table lines
+        const tableLines = [];
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          tableLines.push(lines[i].trim());
+          i++;
+        }
+        if (tableLines.length >= 2) {
+          const parseRow = (row) => row.slice(1, -1).split('|').map(c => c.trim());
+          const headers = parseRow(tableLines[0]);
+          // Skip separator row (e.g. |---|---|)
+          const startIdx = /^[\s|:-]+$/.test(tableLines[1]) ? 2 : 1;
+          let html = '<table class="md-table"><thead><tr>';
+          headers.forEach(h => { html += `<th>${escapeAndFormat(h)}</th>`; });
+          html += '</tr></thead><tbody>';
+          for (let r = startIdx; r < tableLines.length; r++) {
+            const cells = parseRow(tableLines[r]);
+            html += '<tr>';
+            cells.forEach(c => { html += `<td>${escapeAndFormat(c)}</td>`; });
+            html += '</tr>';
+          }
+          html += '</tbody></table>';
+          out.push(html);
+        } else {
+          // Single pipe line — treat as regular text
+          out.push(escapeAndFormat(tableLines[0]));
+        }
+        continue;
+      }
+      out.push(lines[i]);
+      i++;
+    }
+
+    // Escape HTML and apply inline formatting
+    function escapeAndFormat(text) {
+      return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
+    }
+
+    return out.join('\n')
+      .replace(/&/g, (m, offset, str) => {
+        // Don't double-escape inside table HTML
+        if (str.lastIndexOf('<t', offset) > str.lastIndexOf('</t', offset)) return m;
+        return m;
+      })
+      // Apply block-level formatting to non-table lines
       .replace(/^### (.+)$/gm, '<h4>$1</h4>')
       .replace(/^## (.+)$/gm, '<h3>$1</h3>')
       .replace(/^# (.+)$/gm, '<h2>$1</h2>')
@@ -877,6 +939,15 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
               ? (lang === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...')
               : (lang === 'fr' ? '🎯 Analyser' : '🎯 Analyze')}
           </button>
+          {wallAnalysisResult && !showWallAnalysis && (
+            <button
+              className="show-analysis-button"
+              onClick={() => setShowWallAnalysis(true)}
+              title={lang === 'fr' ? 'Voir l\'analyse sauvegardée' : 'View saved analysis'}
+            >
+              📊 {lang === 'fr' ? 'Voir l\'analyse' : 'View analysis'}
+            </button>
+          )}
           <span className="wall-item-count">{items.length} photo{items.length !== 1 ? 's' : ''}</span>
           <span className="wall-toolbar-sep">|</span>
           <button className="wall-delete-wall-btn" onClick={() => deleteWall(activeWall.id)}>
@@ -1257,7 +1328,7 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
             <div className="wall-analysis-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(wallAnalysisResult) }} />
             <div className="wall-analysis-footer">
               <button className="wall-analysis-close-btn" onClick={() => setShowWallAnalysis(false)}>
-                {lang === 'fr' ? 'Fermer' : 'Close'}
+                {lang === 'fr' ? 'Réduire' : 'Collapse'}
               </button>
               <button className="wall-analysis-redo-btn" onClick={openWallAnalysisOptions}>
                 🔄 {lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}

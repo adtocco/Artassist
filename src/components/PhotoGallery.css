@@ -421,6 +421,44 @@
   cursor: not-allowed;
 }
 
+.series-analysis-display {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(240, 147, 251, 0.08);
+  border: 1px solid rgba(240, 147, 251, 0.25);
+  border-radius: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.series-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.series-analysis-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #f5576c;
+}
+
+.close-analysis-btn {
+  padding: 4px 12px;
+  background: rgba(245, 87, 108, 0.15);
+  color: #f5576c;
+  border: 1px solid rgba(245, 87, 108, 0.3);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.close-analysis-btn:hover {
+  background: rgba(245, 87, 108, 0.25);
+}
+
 .close-series-btn {
   background: #eee;
   border: none;

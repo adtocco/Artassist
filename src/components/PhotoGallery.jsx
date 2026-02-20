@@ -108,6 +108,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [gridColumns, setGridColumns] = useState(4);
   const [createdSeriesNames, setCreatedSeriesNames] = useState(new Set());
   const [collectionAnalysisExpanded, setCollectionAnalysisExpanded] = useState(false);
+  const [seriesAnalysisExpanded, setSeriesAnalysisExpanded] = useState(false);
 
   // Analysis options modal state
   const [showAnalysisOptions, setShowAnalysisOptions] = useState(false);
@@ -336,6 +337,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const viewSeries = async (series) => {
     setActiveSeries(series);
     setSeriesAnalysisResult(series.analysis || null);
+    setSeriesAnalysisExpanded(!!series.analysis);
     try {
       const { data, error } = await supabase
         .from('series_photos')
@@ -565,6 +567,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       execute: () => findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series'),
       onComplete: async (result) => {
         setSeriesAnalysisResult(result);
+        setSeriesAnalysisExpanded(true);
         setAnalyzingSeriesItem(false);
         // Save analysis to DB
         await supabase
@@ -777,6 +780,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         },
         onComplete: async (result) => {
           setSeriesAnalysisResult(result);
+          setSeriesAnalysisExpanded(true);
           setLastAnalysisPresetLabel(presetLabelValue);
           setAnalyzingSeriesItem(false);
           await supabase
@@ -1776,6 +1780,35 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                     ? (lang === 'fr' ? '⏳ Analyse en cours...' : '⏳ Analyzing...')
                     : (lang === 'fr' ? '🎯 Analyser la série' : '🎯 Analyze series')}
                 </button>
+
+                {/* Show analysis button (collapsed) */}
+                {seriesAnalysisResult && !seriesAnalysisExpanded && (
+                  <button
+                    onClick={() => setSeriesAnalysisExpanded(true)}
+                    className="show-analysis-button"
+                    style={{ marginTop: '8px', width: '100%' }}
+                  >
+                    📊 {lang === 'fr' ? 'Voir l\'analyse' : 'View analysis'}
+                  </button>
+                )}
+
+                {/* Series analysis display */}
+                {seriesAnalysisResult && seriesAnalysisExpanded && (
+                  <div className="series-analysis-display">
+                    <div className="series-analysis-header">
+                      <h4>📊 {lang === 'fr' ? 'Analyse de la série' : 'Series Analysis'}</h4>
+                      <button
+                        className="close-analysis-btn"
+                        onClick={() => setSeriesAnalysisExpanded(false)}
+                      >
+                        {lang === 'fr' ? 'Réduire' : 'Collapse'}
+                      </button>
+                    </div>
+                    <div className="recommendation-content markdown-content">
+                      {renderMarkdown(seriesAnalysisResult)}
+                    </div>
+                  </div>
+                )}
 
               </div>
             )}

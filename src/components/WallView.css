@@ -1202,6 +1202,35 @@
   color: #11998e;
 }
 
+.wall-analysis-body .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 0.9rem;
+}
+
+.wall-analysis-body .md-table th,
+.wall-analysis-body .md-table td {
+  border: 1px solid #ddd;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.wall-analysis-body .md-table th {
+  background: linear-gradient(135deg, #11998e22, #38ef7d11);
+  font-weight: 600;
+  color: #1a1a2e;
+  white-space: nowrap;
+}
+
+.wall-analysis-body .md-table tr:nth-child(even) {
+  background: #f8f9fa;
+}
+
+.wall-analysis-body .md-table tr:hover {
+  background: #e8f5e9;
+}
+
 .wall-analysis-footer {
   display: flex;
   justify-content: flex-end;
