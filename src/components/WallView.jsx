@@ -905,9 +905,8 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
               const personHeightCm = 175;
               const personH = personHeightCm * PX_PER_CM;
               const personW = personH * 0.32;
-              const overflow = Math.max(0, personH - canvasH * 0.35);
               return (
-                <div className="wall-person" style={{ width: personW, height: personH, bottom: 0, right: canvasW * 0.06 }}>
+                <div className="wall-person" style={{ width: personW, height: personH, top: -personH, right: canvasW * 0.06 }}>
                   <svg viewBox="0 0 120 375" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
                     {/* Head */}
                     <circle cx="60" cy="28" r="24" fill="#555" opacity="0.55" />
