@@ -574,13 +574,14 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
 
 export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', userSettings = null, analysisType = 'collection') {
   try {
-    const analysisTexts = analyses.map((a) => {
-      const name = a.photo_name || 'Sans titre';
+    const photoList = analyses.map((a) => {
+      const name = a.photo_name || a.file_name || 'Sans titre';
       const url = a.photo_url || '';
-      return `"${name}" (URL: ${url}): ${a.analysis}`;
-    }).join('\n\n');
+      return { name, url, analysis: a.analysis };
+    });
 
-    const photoNames = analyses.map(a => a.photo_name || 'Sans titre').join(', ');
+    const analysisTexts = photoList.map(p => `"${p.name}" (URL: ${p.url}): ${p.analysis}`).join('\n\n');
+    const photoNames = photoList.map(p => p.name).join(', ');
 
     const languageNote = lang && lang !== 'en' ? `Veuillez répondre en ${lang === 'fr' ? 'français' : lang}.` : 'Please respond in English.';
 
@@ -591,12 +592,8 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', 
       : '';
 
     const namingInstruction = lang === 'fr'
-      ? `IMPORTANT: Utilisez TOUJOURS les noms des photos (${photoNames}) pour les identifier dans vos recommandations, jamais "Photo 1", "Photo 2", etc.`
-      : `IMPORTANT: ALWAYS use the photo names (${photoNames}) to identify them in your recommendations, never "Photo 1", "Photo 2", etc.`;
-
-    const markdownInstruction = lang === 'fr'
-      ? `FORMAT DE RÉPONSE: Utilisez UNIQUEMENT du Markdown pur. N'utilisez JAMAIS de balises HTML (<div>, <img>, <span>, etc.). Pour afficher les photos, utilisez EXCLUSIVEMENT la syntaxe Markdown image: ![nom](url). Placez chaque image sur sa propre ligne.`
-      : `RESPONSE FORMAT: Use ONLY pure Markdown. NEVER use HTML tags (<div>, <img>, <span>, etc.). To display photos, use EXCLUSIVELY Markdown image syntax: ![name](url). Place each image on its own line.`;
+      ? `IMPORTANT: Utilisez TOUJOURS les noms exacts des photos (${photoNames}) pour les identifier, jamais "Photo 1", "Photo 2", etc.`
+      : `IMPORTANT: ALWAYS use the exact photo names (${photoNames}) to identify them, never "Photo 1", "Photo 2", etc.`;
 
     // Use custom prompt if available, depending on analysis type (collection vs series)
     let basePrompt;
@@ -610,22 +607,98 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', 
         : `You are an expert art curator analyzing a collection of photographs.\nYour task is to identify which photos work well together as a series, which ones are the most interesting individually, and to provide clear reasons for your recommendations.`;
     }
 
-    const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
+    // For collection analysis: request structured JSON
+    if (analysisType === 'collection') {
+      const jsonInstruction = lang === 'fr'
+        ? `FORMAT DE RÉPONSE OBLIGATOIRE: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après, sans bloc markdown \`\`\`json) avec cette structure exacte:
+{
+  "series": [
+    {
+      "name": "Nom évocateur de la série",
+      "description": "Description de la série et pourquoi ces photos fonctionnent ensemble (2-3 phrases)",
+      "photo_names": ["nom_photo_1", "nom_photo_2"],
+      "reasoning": "Explication détaillée de la cohérence visuelle, narrative ou thématique"
+    }
+  ],
+  "highlights": [
+    {
+      "photo_name": "nom_photo",
+      "reason": "Pourquoi cette photo est remarquable individuellement"
+    }
+  ],
+  "global_analysis": "Analyse globale de la collection (3-5 phrases) : cohérence, forces, axes d'amélioration, recommandations de présentation"
+}
 
+Règles:
+- "series": proposez entre 1 et 5 séries de 2 à 6 photos chacune
+- "photo_names": utilisez EXACTEMENT les noms des photos fournis (${photoNames})
+- "highlights": 1 à 3 photos individuellement remarquables
+- "name": titre poétique/évocateur pour chaque série
+- Chaque photo peut apparaître dans plusieurs séries
+- Ne proposez PAS de série avec une seule photo`
+        : `MANDATORY RESPONSE FORMAT: Respond ONLY with a valid JSON object (no text before or after, no markdown \`\`\`json block) with this exact structure:
+{
+  "series": [
+    {
+      "name": "Evocative series name",
+      "description": "Description of the series and why these photos work together (2-3 sentences)",
+      "photo_names": ["photo_name_1", "photo_name_2"],
+      "reasoning": "Detailed explanation of visual, narrative or thematic coherence"
+    }
+  ],
+  "highlights": [
+    {
+      "photo_name": "photo_name",
+      "reason": "Why this photo is individually remarkable"
+    }
+  ],
+  "global_analysis": "Global analysis of the collection (3-5 sentences): coherence, strengths, improvements, presentation recommendations"
+}
+
+Rules:
+- "series": propose between 1 and 5 series of 2 to 6 photos each
+- "photo_names": use EXACTLY the photo names provided (${photoNames})
+- "highlights": 1 to 3 individually remarkable photos
+- "name": poetic/evocative title for each series
+- Each photo can appear in multiple series
+- Do NOT propose a series with only one photo`;
+
+      const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${jsonInstruction}\n\n${languageNote}`;
+      const userMessage = `${instructionNote}\n\nAnalyses des photos de la collection:\n${analysisTexts}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5.2",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
+        max_completion_tokens: 4096
+      });
+
+      const content = response.choices[0].message.content;
+      // Try to parse as JSON, fall back to raw text
+      try {
+        const cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+        const parsed = JSON.parse(cleaned);
+        return JSON.stringify(parsed); // Return stringified JSON
+      } catch {
+        return content; // Fallback: return raw text
+      }
+    }
+
+    // For series analysis: keep markdown format
+    const markdownInstruction = lang === 'fr'
+      ? `FORMAT DE RÉPONSE: Utilisez UNIQUEMENT du Markdown pur. N'utilisez JAMAIS de balises HTML (<div>, <img>, <span>, etc.). Pour afficher les photos, utilisez EXCLUSIVEMENT la syntaxe Markdown image: ![nom](url). Placez chaque image sur sa propre ligne.`
+      : `RESPONSE FORMAT: Use ONLY pure Markdown. NEVER use HTML tags (<div>, <img>, <span>, etc.). To display photos, use EXCLUSIVELY Markdown image syntax: ![name](url). Place each image on its own line.`;
+
+    const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
     const userMessage = `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`;
 
-    // Use GPT-5.2 for global series analysis
     const response = await openai.chat.completions.create({
       model: "gpt-5.2",
       messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        {
-          role: "user",
-          content: userMessage
-        }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
       ],
       max_completion_tokens: 4096
     });

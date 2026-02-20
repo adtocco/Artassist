@@ -93,6 +93,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [draggedPhotoIdx, setDraggedPhotoIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [gridColumns, setGridColumns] = useState(4);
+  const [createdSeriesNames, setCreatedSeriesNames] = useState(new Set());
 
   // Gallery-to-series drag state
   const [galleryDragPhotoId, setGalleryDragPhotoId] = useState(null);
@@ -626,6 +627,70 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
   };
 
+  // Parse collection analysis JSON
+  const parseCollectionAnalysis = (raw) => {
+    if (!raw) return null;
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      return null; // Not JSON — fallback to markdown
+    }
+  };
+
+  // Find photo objects by name from analysis
+  const resolvePhotosByNames = (photoNames) => {
+    return photoNames
+      .map(name => photos.find(p => (p.photo_name || p.file_name) === name))
+      .filter(Boolean);
+  };
+
+  // Create a series directly from analysis suggestion
+  const createSeriesFromAnalysis = async (seriesData) => {
+    if (!selectedCollection?.id) return;
+    const matchedPhotos = resolvePhotosByNames(seriesData.photo_names);
+    if (matchedPhotos.length < 2) {
+      alert(lang === 'fr' ? 'Impossible de retrouver les photos de cette série' : 'Cannot find photos for this series');
+      return;
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: series, error } = await supabase
+        .from('collection_series')
+        .insert({
+          collection_id: selectedCollection.id,
+          user_id: user.id,
+          name: seriesData.name,
+          description: seriesData.description || null
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const entries = matchedPhotos.map((photo, i) => ({
+        series_id: series.id,
+        photo_id: photo.id,
+        position: i
+      }));
+      await supabase.from('series_photos').insert(entries);
+      fetchSeriesList();
+      setCreatedSeriesNames(prev => new Set([...prev, seriesData.name]));
+      return series;
+    } catch (err) {
+      console.error('Error creating series from analysis:', err);
+      alert(lang === 'fr' ? 'Erreur lors de la création' : 'Error creating series');
+      return null;
+    }
+  };
+
+  // Create series + wall + open wall
+  const createSeriesAndWall = async (seriesData) => {
+    const series = await createSeriesFromAnalysis(seriesData);
+    if (!series || !onSendToWall) return;
+    const matchedPhotos = resolvePhotosByNames(seriesData.photo_names);
+    onSendToWall(matchedPhotos.map(p => p.id), matchedPhotos);
+  };
+
   const saveSeriesAnalysis = async (makePublic = false) => {
     if (!seriesTitle.trim()) {
       alert(lang === 'fr' ? 'Veuillez donner un titre à cette analyse' : 'Please provide a title for this analysis');
@@ -955,21 +1020,25 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           </div>
         )}
 
-        <button 
-          onClick={analyzeCollection}
-          disabled={analyzingSeries || photos.length < 2}
-          className="analyze-series-button"
-        >
-          {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Analyser la collection' : 'Analyze Collection')}
-        </button>
-        <button
-          onClick={exportPhotosAsJson}
-          disabled={photos.length === 0}
-          className="export-json-button"
-          title={lang === 'fr' ? 'Exporter les données en JSON' : 'Export data as JSON'}
-        >
-          📥 {lang === 'fr' ? 'Exporter JSON' : 'Export JSON'}
-        </button>
+        {selectedCollection?.id && (
+          <>
+            <button 
+              onClick={analyzeCollection}
+              disabled={analyzingSeries || photos.length < 2}
+              className="analyze-series-button"
+            >
+              {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Analyser la collection' : 'Analyze Collection')}
+            </button>
+            <button
+              onClick={exportPhotosAsJson}
+              disabled={photos.length === 0}
+              className="export-json-button"
+              title={lang === 'fr' ? 'Exporter les données en JSON' : 'Export data as JSON'}
+            >
+              📥 {lang === 'fr' ? 'Exporter JSON' : 'Export JSON'}
+            </button>
+          </>
+        )}
 
         <div className="grid-size-toggle">
           {[2, 4, 8].map(cols => (
@@ -1029,29 +1098,148 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         </div>
       )}
 
-      {seriesRecommendation && (
-        <div className="series-recommendation">
-          <h3>📊 Collection Analysis & Series Recommendations</h3>
-          <div className="recommendation-content markdown-content">
-            {renderMarkdown(seriesRecommendation)}
+      {seriesRecommendation && (() => {
+        const parsed = parseCollectionAnalysis(seriesRecommendation);
+        if (parsed && parsed.series) {
+          // Structured JSON rendering
+          return (
+            <div className="series-recommendation">
+              <h3>📊 {lang === 'fr' ? 'Analyse de la collection' : 'Collection Analysis'}</h3>
+
+              {/* Global analysis */}
+              {parsed.global_analysis && (
+                <div className="analysis-global">
+                  <p>{parsed.global_analysis}</p>
+                </div>
+              )}
+
+              {/* Proposed series */}
+              <h4 className="analysis-section-title">🎞 {lang === 'fr' ? 'Séries proposées' : 'Proposed Series'}</h4>
+              <div className="analysis-series-list">
+                {parsed.series.map((s, idx) => {
+                  const matchedPhotos = resolvePhotosByNames(s.photo_names);
+                  return (
+                    <div key={idx} className="analysis-series-card">
+                      <div className="analysis-series-card-header">
+                        <h5>{s.name}</h5>
+                        <span className="analysis-series-card-count">{s.photo_names.length} 📷</span>
+                      </div>
+                      <p className="analysis-series-card-desc">{s.description}</p>
+                      {s.reasoning && <p className="analysis-series-card-reasoning">💡 {s.reasoning}</p>}
+                      
+                      <div className="analysis-series-photos">
+                        {matchedPhotos.map(p => (
+                          <div key={p.id} className="analysis-series-photo">
+                            <img src={p.photo_url} alt={p.photo_name || p.file_name} />
+                            <span>{p.photo_name || p.file_name}</span>
+                          </div>
+                        ))}
+                        {s.photo_names.length > matchedPhotos.length && (
+                          <span className="analysis-series-missing">
+                            ⚠️ {s.photo_names.length - matchedPhotos.length} {lang === 'fr' ? 'photo(s) non trouvée(s)' : 'photo(s) not found'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="analysis-series-card-actions">
+                        <button
+                          className={`analysis-create-series-btn${createdSeriesNames.has(s.name) ? ' created' : ''}`}
+                          onClick={() => createSeriesFromAnalysis(s)}
+                          disabled={matchedPhotos.length < 2 || createdSeriesNames.has(s.name)}
+                        >
+                          {createdSeriesNames.has(s.name)
+                            ? `✅ ${lang === 'fr' ? 'Série ajoutée' : 'Series added'}`
+                            : `✅ ${lang === 'fr' ? 'Créer la série' : 'Create series'}`}
+                        </button>
+                        {onSendToWall && (
+                          <button
+                            className={`analysis-create-wall-btn${createdSeriesNames.has(s.name) ? ' created' : ''}`}
+                            onClick={() => createSeriesAndWall(s)}
+                            disabled={matchedPhotos.length < 2 || createdSeriesNames.has(s.name)}
+                          >
+                            {createdSeriesNames.has(s.name)
+                              ? `✅ ${lang === 'fr' ? 'Série ajoutée' : 'Series added'}`
+                              : `📐 ${lang === 'fr' ? 'Série + Mur' : 'Series + Wall'}`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Highlights */}
+              {parsed.highlights && parsed.highlights.length > 0 && (
+                <>
+                  <h4 className="analysis-section-title">⭐ {lang === 'fr' ? 'Photos remarquables' : 'Notable Photos'}</h4>
+                  <div className="analysis-highlights">
+                    {parsed.highlights.map((h, idx) => {
+                      const photo = photos.find(p => (p.photo_name || p.file_name) === h.photo_name);
+                      return (
+                        <div key={idx} className="analysis-highlight-card">
+                          {photo && <img src={photo.photo_url} alt={h.photo_name} className="analysis-highlight-img" />}
+                          <div className="analysis-highlight-info">
+                            <strong>{h.photo_name}</strong>
+                            <p>{h.reason}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div className="series-actions">
+                <button 
+                  onClick={() => setShowSaveDialog(true)}
+                  className="save-series-button"
+                  disabled={savingAnalysis}
+                >
+                  💾 {lang === 'fr' ? 'Sauvegarder' : 'Save'}
+                </button>
+                <button 
+                  onClick={() => setSeriesRecommendation(null)}
+                  className="close-recommendation"
+                >
+                  {lang === 'fr' ? 'Fermer' : 'Close'}
+                </button>
+              </div>
+            </div>
+          );
+        }
+        // Fallback: markdown rendering
+        return (
+          <div className="series-recommendation">
+            <h3>📊 Collection Analysis & Series Recommendations</h3>
+            <div className="recommendation-content markdown-content">
+              {renderMarkdown(seriesRecommendation)}
+            </div>
+            <div className="series-actions">
+              <button 
+                onClick={() => setShowSaveDialog(true)}
+                className="save-series-button"
+                disabled={savingAnalysis}
+              >
+                💾 {lang === 'fr' ? 'Sauvegarder' : 'Save'}
+              </button>
+              {onSendToWall && (
+                <button
+                  onClick={() => onSendToWall(photos.map(p => p.id), photos)}
+                  className="send-to-wall-btn"
+                >
+                  📐 {lang === 'fr' ? 'Créer un mur' : 'Create wall'}
+                </button>
+              )}
+              <button 
+                onClick={() => setSeriesRecommendation(null)}
+                className="close-recommendation"
+              >
+                {lang === 'fr' ? 'Fermer' : 'Close'}
+              </button>
+            </div>
           </div>
-          <div className="series-actions">
-            <button 
-              onClick={() => setShowSaveDialog(true)}
-              className="save-series-button"
-              disabled={savingAnalysis}
-            >
-              💾 {lang === 'fr' ? 'Sauvegarder' : 'Save'}
-            </button>
-            <button 
-              onClick={() => setSeriesRecommendation(null)}
-              className="close-recommendation"
-            >
-              {lang === 'fr' ? 'Fermer' : 'Close'}
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Move to Collection Dialog */}
       {showMoveDialog && (
@@ -1279,23 +1467,19 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                     ✕
                   </button>
                 </div>
-                {activeSeries.description && <p className="series-description">{activeSeries.description}</p>}
                 <textarea
-                  className="series-context-input"
-                  placeholder={lang === 'fr' ? 'Contexte pour l\'analyse...' : 'Analysis context...'}
-                  value={seriesContext}
-                  onChange={(e) => setSeriesContext(e.target.value)}
+                  className="series-desc-input"
+                  placeholder={lang === 'fr' ? 'Ajouter une description...' : 'Add a description...'}
+                  value={activeSeries.description || ''}
+                  onChange={(e) => setActiveSeries(prev => ({ ...prev, description: e.target.value }))}
+                  onBlur={async () => {
+                    try {
+                      await supabase.from('collection_series').update({ description: activeSeries.description?.trim() || null, updated_at: new Date().toISOString() }).eq('id', activeSeries.id);
+                      fetchSeriesList();
+                    } catch (err) { console.error('Error saving description:', err); }
+                  }}
                   rows={2}
                 />
-                <button
-                  onClick={analyzeSeriesItem}
-                  disabled={analyzingSeriesItem || seriesPhotos.length < 2}
-                  className="analyze-series-item-btn"
-                >
-                  {analyzingSeriesItem
-                    ? (lang === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...')
-                    : '🎯 ' + (lang === 'fr' ? 'Analyser' : 'Analyze')}
-                </button>
 
                 {/* Series photos — drag to reorder */}
                 <div className="series-photos-grid">
@@ -1324,15 +1508,6 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   ))}
                 </div>
 
-                {/* Series Analysis Result */}
-                {seriesAnalysisResult && (
-                  <div className="series-analysis-result">
-                    <h5>📊 {lang === 'fr' ? 'Analyse' : 'Analysis'}</h5>
-                    <div className="recommendation-content markdown-content">
-                      {renderMarkdown(seriesAnalysisResult)}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </aside>
@@ -1372,49 +1547,49 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             </div>
             
             <div className="modal-details">
-              <h3>{selectedPhoto.photo_name || selectedPhoto.file_name}</h3>
-              {selectedPhoto.photo_name && (
-                <span className="modal-file-name">{selectedPhoto.file_name}</span>
-              )}
-              <span className="modal-prompt-type">
-                {lang === 'fr' ? "Type d'analyse" : 'Analysis Type'}: {selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type}
-                {selectedPhoto.collection_analysis && (
-                  <span className="collection-analysis-badge"> ({lang === 'fr' ? 'collection' : 'collection'})</span>
-                )}
-              </span>
-              <p className="modal-date">
-                📅 {lang === 'fr' ? 'Ajoutée le' : 'Added on'} {new Date(selectedPhoto.created_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </p>
-              {selectedPhoto.analysis && selectedPhoto.updated_at && selectedPhoto.updated_at !== selectedPhoto.created_at && (
-                <p className="modal-date analysis-date">
-                  🔄 {lang === 'fr' ? 'Dernière analyse le' : 'Last analyzed on'} {new Date(selectedPhoto.updated_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              )}
-              
-              {/* Analysis settings tags */}
-              {(selectedPhoto.analysis_detail_level || selectedPhoto.analysis_tone || (selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0)) && (
-                <div className="analysis-settings-tags">
-                  {selectedPhoto.analysis_detail_level && (
-                    <span className={`settings-tag detail-${selectedPhoto.analysis_detail_level}`}>
-                      {selectedPhoto.analysis_detail_level === 'concise' ? '📝 Concis' : 
-                       selectedPhoto.analysis_detail_level === 'detailed' ? '📚 Détaillé' : 
-                       '⚖️ Équilibré'}
+              <div className="modal-details-header">
+                <div className="modal-details-title-row">
+                  <h3>{selectedPhoto.photo_name || selectedPhoto.file_name}</h3>
+                  <div className="modal-meta-inline">
+                    {selectedPhoto.photo_name && (
+                      <span className="modal-file-name">{selectedPhoto.file_name}</span>
+                    )}
+                    <span className="modal-prompt-type">
+                      {selectedPhoto.collection_analysis_type || selectedPhoto.prompt_type}
+                      {selectedPhoto.collection_analysis && (
+                        <span className="collection-analysis-badge"> ({lang === 'fr' ? 'collection' : 'collection'})</span>
+                      )}
                     </span>
-                  )}
-                  {selectedPhoto.analysis_tone && (
-                    <span className={`settings-tag tone-${selectedPhoto.analysis_tone}`}>
-                      {selectedPhoto.analysis_tone === 'friendly' ? '😊 Amical' : 
-                       selectedPhoto.analysis_tone === 'technical' ? '🔧 Technique' : 
-                       '💼 Professionnel'}
+                    <span className="modal-date-inline">
+                      📅 {new Date(selectedPhoto.created_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </span>
-                  )}
-                  {selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0 && (
-                    <span className="settings-tag focus-areas">
-                      🎯 {selectedPhoto.analysis_focus_areas.join(', ')}
-                    </span>
-                  )}
+                    {selectedPhoto.analysis && selectedPhoto.updated_at && selectedPhoto.updated_at !== selectedPhoto.created_at && (
+                      <span className="modal-date-inline modal-date-updated">
+                        🔄 {new Date(selectedPhoto.updated_at).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                    {selectedPhoto.analysis_detail_level && (
+                      <span className={`settings-tag-inline detail-${selectedPhoto.analysis_detail_level}`}>
+                        {selectedPhoto.analysis_detail_level === 'concise' ? '📝' : 
+                         selectedPhoto.analysis_detail_level === 'detailed' ? '📚' : 
+                         '⚖️'}
+                      </span>
+                    )}
+                    {selectedPhoto.analysis_tone && (
+                      <span className={`settings-tag-inline tone-${selectedPhoto.analysis_tone}`}>
+                        {selectedPhoto.analysis_tone === 'friendly' ? '😊' : 
+                         selectedPhoto.analysis_tone === 'technical' ? '🔧' : 
+                         '💼'}
+                      </span>
+                    )}
+                    {selectedPhoto.analysis_focus_areas && selectedPhoto.analysis_focus_areas.length > 0 && (
+                      <span className="settings-tag-inline focus-areas" title={selectedPhoto.analysis_focus_areas.join(', ')}>
+                        🎯 {selectedPhoto.analysis_focus_areas.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
               
               {(() => {
                 // Use collection-specific analysis if available, otherwise use default analysis

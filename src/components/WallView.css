@@ -137,6 +137,99 @@
   overflow: hidden;
 }
 
+/* Fullscreen mode */
+.wall-container.wall-fullscreen {
+  height: 100vh;
+  border-radius: 0;
+  background: #2a2a2a;
+}
+
+.wall-fullscreen .wall-toolbar {
+  background: rgba(30, 30, 30, 0.95);
+  border-bottom: 1px solid #444;
+}
+
+.wall-fullscreen .wall-toolbar-left,
+.wall-fullscreen .wall-toolbar-center,
+.wall-fullscreen .wall-toolbar-right {
+  color: #ddd;
+}
+
+.wall-fullscreen .wall-name {
+  color: #eee;
+}
+
+.wall-fullscreen .wall-name:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wall-fullscreen .wall-zoom-label {
+  color: #ccc;
+}
+
+.wall-fullscreen .wall-item-count {
+  color: #aaa;
+}
+
+.wall-fullscreen .wall-toolbar-sep {
+  color: #555;
+}
+
+.wall-fullscreen .wall-toolbar-secondary {
+  background: rgba(40, 35, 60, 0.95) !important;
+  border-bottom-color: #6c63ff !important;
+}
+
+.wall-fullscreen .wall-selected-label {
+  color: #c4b8ff;
+}
+
+.wall-fullscreen .wall-selected-dims {
+  background: rgba(108, 99, 255, 0.2);
+  color: #b0a6ee;
+}
+
+.wall-fullscreen .wall-deselect-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #aaa;
+}
+
+.wall-fullscreen .wall-deselect-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wall-fullscreen .wall-hint {
+  background: rgba(0, 0, 0, 0.6);
+  color: #aaa;
+}
+
+/* Fullscreen button */
+.wall-fullscreen-btn {
+  padding: 6px 10px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.wall-fullscreen-btn:hover {
+  background: #e0e0e0;
+  transform: scale(1.05);
+}
+
+.wall-fullscreen .wall-fullscreen-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #eee;
+}
+
+.wall-fullscreen .wall-fullscreen-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* ===== Toolbar ===== */
 .wall-toolbar {
   display: flex;
@@ -202,6 +295,53 @@
   background: #f0f0f0;
 }
 
+.wall-physical-dims {
+  font-size: 0.8rem;
+  color: #888;
+  background: #f0f0f0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.wall-physical-dims:hover {
+  background: #e8e8e8;
+  border-color: #ccc;
+  color: #555;
+}
+
+/* ===== Settings dialog extras ===== */
+.wall-settings-color {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.wall-color-input {
+  width: 44px;
+  height: 36px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 2px;
+  background: white;
+}
+
+.wall-color-input:hover {
+  border-color: #667eea;
+}
+
+.wall-color-value {
+  font-size: 0.85rem;
+  color: #999;
+  font-family: monospace;
+}
+
 .wall-name-input {
   padding: 4px 8px;
   border: 2px solid #667eea;
@@ -238,6 +378,68 @@
   min-width: 40px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* Secondary toolbar for selected photo */
+.wall-toolbar-secondary {
+  background: #f8f6ff !important;
+  border-bottom: 2px solid #d5cfff !important;
+  padding: 6px 16px !important;
+  gap: 12px;
+  animation: slideDown 0.15s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.wall-toolbar-secondary-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wall-toolbar-secondary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wall-selected-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #5a4fad;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.wall-selected-dims {
+  font-size: 0.78rem;
+  color: #8878cc;
+  background: #ece8ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.wall-deselect-btn {
+  padding: 5px 10px;
+  background: #e8e8e8;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #666;
+  transition: background 0.2s;
+}
+
+.wall-deselect-btn:hover {
+  background: #d0d0d0;
 }
 
 .wall-delete-item-btn {
@@ -279,6 +481,57 @@
   white-space: nowrap;
 }
 
+/* ===== Room Layout ===== */
+.wall-room {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.wall-room-middle {
+  display: flex;
+}
+
+.wall-room-ceiling,
+.wall-room-floor,
+.wall-room-left,
+.wall-room-right {
+  pointer-events: none;
+}
+
+.wall-room-floor {
+  position: relative;
+  overflow: visible;
+}
+
+/* ===== Person silhouette ===== */
+.wall-person {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.25));
+  transition: opacity 0.3s;
+}
+
+.wall-person-label {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
 /* ===== Viewport & Canvas ===== */
 .wall-viewport {
   flex: 1;
@@ -294,9 +547,7 @@
 
 .wall-canvas {
   position: relative;
-  background-color: #f5f5f5;
-  background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
-  background-size: 40px 40px;
+  background-color: #ffffff;
   will-change: transform;
 }
 
@@ -304,26 +555,45 @@
 .wall-item {
   position: absolute;
   cursor: grab;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow:
+    8px 12px 24px rgba(0, 0, 0, 0.45),
+    4px 6px 12px rgba(0, 0, 0, 0.30),
+    2px 3px 5px rgba(0, 0, 0, 0.20),
+    12px 16px 40px rgba(0, 0, 0, 0.15);
   border: 4px solid white;
   border-radius: 2px;
+  border-top: 6px solid rgba(255, 255, 255, 1);
+  border-left: 6px solid rgba(255, 255, 255, 0.95);
+  border-right: 3px solid rgba(210, 210, 210, 0.85);
+  border-bottom: 3px solid rgba(190, 190, 190, 0.85);
   overflow: visible;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.2s, transform 0.2s;
   touch-action: none;
   user-select: none;
 }
 
 .wall-item:hover {
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    10px 16px 32px rgba(0, 0, 0, 0.50),
+    5px 8px 16px rgba(0, 0, 0, 0.32),
+    2px 4px 6px rgba(0, 0, 0, 0.22),
+    14px 20px 50px rgba(0, 0, 0, 0.18);
 }
 
 .wall-item:active {
   cursor: grabbing;
+  box-shadow:
+    3px 4px 8px rgba(0, 0, 0, 0.30),
+    1px 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .wall-item.selected {
   border-color: #4a90d9;
-  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.5), 0 8px 28px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 0 0 3px rgba(74, 144, 217, 0.5),
+    8px 12px 28px rgba(0, 0, 0, 0.45),
+    4px 6px 12px rgba(0, 0, 0, 0.28),
+    12px 16px 40px rgba(0, 0, 0, 0.15);
 }
 
 .wall-item img {
@@ -334,6 +604,76 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* ===== Photo dimension label ===== */
+.wall-item-dims {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Distance Rulers ===== */
+.wall-ruler {
+  position: absolute;
+  width: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wall-ruler-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed rgba(200, 60, 60, 0.6);
+}
+
+/* Horizontal ticks at start and end of ruler */
+.wall-ruler-tick {
+  position: absolute;
+  left: -6px;
+  width: 12px;
+  height: 0;
+  border-top: 1.5px solid rgba(200, 60, 60, 0.7);
+}
+
+.wall-ruler-tick-start {
+  top: 0;
+}
+
+.wall-ruler-tick-end {
+  bottom: 0;
+}
+
+/* Label centered on the ruler line */
+.wall-ruler-label {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  background: rgba(180, 40, 40, 0.85);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
 }
 
 /* ===== Resize Handles ===== */
@@ -462,6 +802,38 @@
   border-color: #667eea;
 }
 
+.wall-dialog-dims {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.wall-dim-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.wall-dim-input {
+  width: 80px !important;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wall-dim-unit {
+  font-size: 0.8rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+.wall-dim-x {
+  font-size: 1.1rem;
+  color: #aaa;
+  font-weight: 600;
+}
+
 .wall-dialog-hint {
   font-size: 0.85rem;
   color: #888;
@@ -555,6 +927,136 @@
 .wall-shared-badge {
   color: #2e7d32;
   font-weight: 600;
+}
+
+/* ===== Toggle dimensions button ===== */
+.wall-toggle-dims-btn {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #999;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.wall-toggle-dims-btn:hover {
+  background: #e8e8e8;
+  color: #666;
+}
+
+.wall-toggle-dims-btn.active {
+  background: #e8f0fe;
+  color: #4a90d9;
+  border-color: #4a90d9;
+}
+
+/* ===== Frame controls ===== */
+.wall-toolbar-frame {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-left: 1px solid #e0daf5;
+  border-right: 1px solid #e0daf5;
+  margin: 0 4px;
+}
+
+.wall-frame-label {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: #5a4fad;
+  white-space: nowrap;
+}
+
+.wall-frame-color-input {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid #d5cfff;
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+}
+
+.wall-frame-color-input::-webkit-color-swatch-wrapper {
+  padding: 1px;
+}
+
+.wall-frame-color-input::-webkit-color-swatch {
+  border-radius: 3px;
+  border: none;
+}
+
+.wall-frame-thickness {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wall-frame-thickness-input {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1px solid #d5cfff;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  text-align: center;
+  color: #5a4fad;
+  background: #fff;
+}
+
+.wall-frame-thickness-input:focus {
+  outline: none;
+  border-color: #8878cc;
+  box-shadow: 0 0 0 2px rgba(136, 120, 204, 0.15);
+}
+
+.wall-frame-unit {
+  font-size: 0.78rem;
+  color: #8878cc;
+  font-weight: 500;
+}
+
+.wall-frame-remove-btn {
+  padding: 3px 7px;
+  background: #ffe0e0;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: #c0392b;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.wall-frame-remove-btn:hover {
+  background: #ffc8c8;
+}
+
+/* ===== Toggle person button ===== */
+.wall-toggle-person-btn {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #999;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.wall-toggle-person-btn:hover {
+  background: #e8e8e8;
+  color: #666;
+}
+
+.wall-toggle-person-btn.active {
+  background: #e8f0fe;
+  color: #4a90d9;
+  border-color: #4a90d9;
 }
 
 /* ===== Add photos button ===== */

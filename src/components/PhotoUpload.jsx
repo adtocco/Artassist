@@ -334,16 +334,7 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
               </span>
             )}
           </div>
-        ) : (
-          <div className="no-collection-warning">
-            <span className="warning-icon">⚠️</span>
-            <span>
-              {lang === 'fr' 
-                ? 'Sélectionnez une collection pour analyser les photos lors du téléversement'
-                : 'Select a collection to analyze photos on upload'}
-            </span>
-          </div>
-        )}
+        ) : null}
 
         <div 
           className={`file-input-wrapper ${isDragging ? 'drag-over' : ''}`}
@@ -367,6 +358,14 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
                 : (lang === 'fr' ? '📷 Choisir des photos ou glisser-déposer ici' : '📷 Choose photos or drag & drop here')}
           </label>
         </div>
+
+        {selectedFiles.length > 5 && hasValidCollection && (
+          <div className="upload-warning">
+            ⚠️ {lang === 'fr'
+              ? `L'analyse de ${selectedFiles.length} photos peut prendre plus de 10 minutes. Veuillez patienter sans fermer la page.`
+              : `Analyzing ${selectedFiles.length} photos may take over 10 minutes. Please wait without closing the page.`}
+          </div>
+        )}
 
         <button 
           onClick={uploadAndAnalyze} 

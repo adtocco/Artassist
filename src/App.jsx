@@ -10,6 +10,7 @@ import UserSettings from './components/UserSettings';
 import Profile from './components/Profile';
 import WallView from './components/WallView';
 import SharedWall from './components/SharedWall';
+import SeriesOverview from './components/SeriesOverview';
 import './App.css';
 
 function App() {
@@ -155,11 +156,11 @@ function App() {
           <div className="header-actions">
             <span className="user-email">{session.user.email}</span>
             <button 
-              onClick={() => setShowSettings(true)}
-              className="settings-button"
-              title={lang === 'fr' ? 'Paramètres' : 'Settings'}
+              onClick={() => setActiveTab('profile')}
+              className={`settings-button ${activeTab === 'profile' ? 'active' : ''}`}
+              title={lang === 'fr' ? 'Profil' : 'Profile'}
             >
-              ⚙️
+              👤
             </button>
             <select
               value={lang}
@@ -186,10 +187,16 @@ function App() {
           📸 {lang === 'fr' ? 'Mes Photos' : 'My Photos'}
         </button>
         <button 
-          className={`nav-tab ${activeTab === 'saved' ? 'active' : ''}`}
-          onClick={() => setActiveTab('saved')}
+          className={`nav-tab ${activeTab === 'collections' ? 'active' : ''}`}
+          onClick={() => setActiveTab('collections')}
         >
-          📁 {lang === 'fr' ? 'Séries Sauvegardées' : 'Saved Series'}
+          📁 {lang === 'fr' ? 'Collections' : 'Collections'}
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'series' ? 'active' : ''}`}
+          onClick={() => setActiveTab('series')}
+        >
+          🎞 {lang === 'fr' ? 'Séries' : 'Series'}
         </button>
         <button 
           className={`nav-tab ${activeTab === 'wall' ? 'active' : ''}`}
@@ -198,10 +205,10 @@ function App() {
           🖼 {lang === 'fr' ? 'Mur' : 'Wall'}
         </button>
         <button 
-          className={`nav-tab ${activeTab === 'profile' ? 'active' : ''}`}
-          onClick={() => setActiveTab('profile')}
+          className={`nav-tab ${activeTab === 'saved' ? 'active' : ''}`}
+          onClick={() => setActiveTab('saved')}
         >
-          👤 {lang === 'fr' ? 'Profil' : 'Profile'}
+          📊 {lang === 'fr' ? 'Analyses' : 'Analyses'}
         </button>
       </nav>
 
@@ -220,7 +227,7 @@ function App() {
             lang={lang}
             onClearInitial={() => setWallInitialPhotos(null)}
           />
-        ) : activeTab === 'gallery' ? (
+        ) : activeTab === 'collections' ? (
           <div className="gallery-layout">
             <aside className="sidebar">
               <Collections 
@@ -253,6 +260,38 @@ function App() {
               />
             </div>
           </div>
+        ) : activeTab === 'gallery' ? (
+          <div className="main-content">
+            <PhotoUpload 
+              onPhotoAnalyzed={handlePhotoAnalyzed} 
+              lang={lang}
+              selectedCollection={null}
+              userSettings={userSettings}
+            />
+            <PhotoGallery 
+              refreshTrigger={refreshTrigger} 
+              lang={lang}
+              selectedCollection={null}
+              collections={collections}
+              userSettings={userSettings}
+              onPhotosChanged={() => setCollectionsRefreshTrigger(prev => prev + 1)}
+              onSendToWall={(photoIds, photos) => {
+                setGalleryPhotos(photos);
+                setWallInitialPhotos(photoIds);
+                setActiveTab('wall');
+              }}
+            />
+          </div>
+        ) : activeTab === 'series' ? (
+          <SeriesOverview
+            lang={lang}
+            userSettings={userSettings}
+            onSendToWall={(photoIds, photos) => {
+              setGalleryPhotos(photos);
+              setWallInitialPhotos(photoIds);
+              setActiveTab('wall');
+            }}
+          />
         ) : (
           <SavedSeries lang={lang} />
         )}
@@ -268,7 +307,7 @@ function App() {
       )}
 
       <footer className="app-footer">
-        <p>AI-Powered Artistic Photo Analysis with GPT-4</p>
+        <p>AI-Powered Artistic Photo Analysis with GPT-5.2 et Opus 4.6</p>
       </footer>
     </div>
   );

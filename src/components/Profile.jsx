@@ -159,6 +159,9 @@ export default function Profile({ user, lang = 'fr', onSettingsUpdate }) {
                 <span className="preset-title">{lang === 'fr' ? preset.labelFr : preset.labelEn}</span>
                 <span className="preset-desc">{lang === 'fr' ? preset.descFr : preset.descEn}</span>
               </div>
+              <span className="preset-info-icon" title={preset.prompt[lang] || preset.prompt.fr}>
+                ℹ️
+              </span>
             </label>
           ))}
 
@@ -286,33 +289,6 @@ export default function Profile({ user, lang = 'fr', onSettingsUpdate }) {
                     <span className="option-title">{lang === 'fr' ? opt.iconFr : opt.iconEn}</span>
                     <span className="option-desc">{lang === 'fr' ? opt.descFr : opt.descEn}</span>
                   </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="settings-block">
-            <h3>{lang === 'fr' ? 'Domaines d\'intérêt prioritaires' : 'Priority Focus Areas'}</h3>
-            <p className="settings-description">
-              {lang === 'fr'
-                ? 'Sélectionnez les aspects sur lesquels vous souhaitez des analyses plus approfondies'
-                : 'Select aspects you want more in-depth analysis on'}
-            </p>
-            <div className="focus-areas">
-              {[
-                { value: 'composition', labelFr: '🎯 Composition', labelEn: '🎯 Composition' },
-                { value: 'lighting', labelFr: '💡 Éclairage', labelEn: '💡 Lighting' },
-                { value: 'colors', labelFr: '🎨 Couleurs', labelEn: '🎨 Colors' },
-                { value: 'emotion', labelFr: '💫 Émotion', labelEn: '💫 Emotion' },
-                { value: 'technique', labelFr: '⚙️ Technique', labelEn: '⚙️ Technique' }
-              ].map((area) => (
-                <label key={area.value} className={`focus-area ${settings.focus_areas.includes(area.value) ? 'active' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={settings.focus_areas.includes(area.value)}
-                    onChange={() => toggleFocusArea(area.value)}
-                  />
-                  <span>{lang === 'fr' ? area.labelFr : area.labelEn}</span>
                 </label>
               ))}
             </div>

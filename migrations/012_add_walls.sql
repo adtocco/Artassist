@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.walls (
   name TEXT NOT NULL DEFAULT 'Nouveau mur',
   canvas_width INT NOT NULL DEFAULT 3000,
   canvas_height INT NOT NULL DEFAULT 2000,
-  background_color TEXT NOT NULL DEFAULT '#f5f5f5',
+  background_color TEXT NOT NULL DEFAULT '#ffffff',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

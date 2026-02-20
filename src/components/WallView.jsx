@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import './WallView.css';
 
-const CANVAS_W = 3000;
-const CANVAS_H = 2000;
+const PX_PER_CM = 5;
 const DEFAULT_W = 300;
 const MIN_W = 60;
 
@@ -27,7 +26,18 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
   // Create dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newWallName, setNewWallName] = useState('');
+  const [newWallWidthM, setNewWallWidthM] = useState('6');
+  const [newWallHeightM, setNewWallHeightM] = useState('2.2');
   const [pendingPhotoIds, setPendingPhotoIds] = useState(null);
+  // Settings dialog
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsWidthM, setSettingsWidthM] = useState('');
+  const [settingsHeightM, setSettingsHeightM] = useState('');
+  const [settingsBg, setSettingsBg] = useState('#ffffff');
+  const [showDims, setShowDims] = useState(true);
+  const [showPerson, setShowPerson] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const wallContainerRef = useRef(null);
   // Share
   const [shareLink, setShareLink] = useState(null);
   // Photo picker modal
@@ -51,6 +61,15 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
       onClearInitial?.();
     }
   }, [initialPhotoIds]);
+
+  // Fullscreen change listener
+  useEffect(() => {
+    function onFsChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // Wheel zoom (needs non-passive listener for preventDefault)
   useEffect(() => {
@@ -85,6 +104,27 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     };
   }, []);
 
+  // Center canvas in viewport when wall changes
+  useLayoutEffect(() => {
+    if (!activeWall) return;
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const cW = (activeWall.physical_width_cm || 600) * PX_PER_CM;
+    const cH = (activeWall.physical_height_cm || 220) * PX_PER_CM;
+    const vpW = vp.clientWidth;
+    const vpH = vp.clientHeight;
+    // Total room dimensions (canvas + side walls + ceiling + floor)
+    const roomW = cW + cW * 0.12 * 2; // left + right walls
+    const roomH = cH * 0.25 + cH + cH * 0.35; // ceiling + canvas + floor
+    // Fit entire room in viewport with margin
+    const z = Math.min(vpW * 0.9 / roomW, vpH * 0.9 / roomH, 1);
+    // Center the room in the viewport
+    const px = (vpW - roomW * z) / 2;
+    const py = (vpH - roomH * z) / 2;
+    setPan({ x: px, y: py });
+    setZoom(+(z.toFixed(2)));
+  }, [activeWall?.id]);
+
   // ─── Data ────────────────────────────────────────────────────
 
   async function loadWalls() {
@@ -107,19 +147,42 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
       .order('z_index');
     setItems(data || []);
     setMaxZ(data?.length ? Math.max(...data.map(i => i.z_index)) : 0);
-    setPan({ x: 0, y: 0 });
-    setZoom(0.5);
     setSelectedId(null);
+
+    // Fetch photo data for all items not already in photos prop
+    if (data?.length) {
+      const knownIds = new Set(photos.map(p => p.id));
+      const missingIds = [...new Set(data.map(i => i.photo_id).filter(id => !knownIds.has(id)))];
+      if (missingIds.length > 0) {
+        const { data: fetched } = await supabase
+          .from('photo_analyses')
+          .select('id, photo_url, file_name, photo_name')
+          .in('id', missingIds);
+        if (fetched?.length) {
+          setAllPhotos(prev => {
+            const existing = new Set(prev.map(p => p.id));
+            const newPhotos = fetched.filter(p => !existing.has(p.id));
+            return newPhotos.length ? [...prev, ...newPhotos] : prev;
+          });
+        }
+      }
+    }
   }
 
   function openCreateDialog(photoIds = []) {
     setPendingPhotoIds(photoIds);
     setNewWallName(`Mur du ${new Date().toLocaleDateString('fr-FR')}`);
+    setNewWallWidthM('6');
+    setNewWallHeightM('2.2');
     setShowCreateDialog(true);
   }
 
   async function confirmCreateWall() {
     const name = newWallName.trim() || `Mur du ${new Date().toLocaleDateString('fr-FR')}`;
+    const physW = Math.max(50, Math.round(parseFloat(newWallWidthM) * 100) || 600);
+    const physH = Math.max(50, Math.round(parseFloat(newWallHeightM) * 100) || 220);
+    const cW = physW * PX_PER_CM;
+    const cH = physH * PX_PER_CM;
     const photoIds = pendingPhotoIds || [];
     setShowCreateDialog(false);
     setPendingPhotoIds(null);
@@ -127,7 +190,7 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
 
     const { data: wall, error } = await supabase
       .from('walls')
-      .insert({ user_id: userSession.user.id, name })
+      .insert({ user_id: userSession.user.id, name, physical_width_cm: physW, physical_height_cm: physH, background_color: '#ffffff' })
       .select()
       .single();
     if (error || !wall) return;
@@ -136,8 +199,8 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     if (photoIds.length > 0) {
       const cols = Math.ceil(Math.sqrt(photoIds.length));
       const spacing = DEFAULT_W + 40;
-      const startX = (CANVAS_W - cols * spacing) / 2;
-      const startY = (CANVAS_H - Math.ceil(photoIds.length / cols) * spacing) / 2;
+      const startX = (cW - cols * spacing) / 2;
+      const startY = (cH - Math.ceil(photoIds.length / cols) * spacing) / 2;
       newItems = photoIds.map((pid, i) => ({
         wall_id: wall.id,
         photo_id: pid,
@@ -155,8 +218,6 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     setItems(newItems);
     setMaxZ(newItems.length);
     setWalls(prev => [wall, ...prev]);
-    setPan({ x: 0, y: 0 });
-    setZoom(0.5);
     setSelectedId(null);
     setShareLink(null);
   }
@@ -205,6 +266,16 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
       setShareLink('copied');
       setTimeout(() => setShareLink(link), 2000);
     });
+  }
+
+  async function updateItemFrame(itemId, color, widthCm) {
+    setItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, frame_color: color, frame_width_cm: widthCm } : i
+    ));
+    await supabase.from('wall_items').update({
+      frame_color: color,
+      frame_width_cm: widthCm,
+    }).eq('id', itemId);
   }
 
   async function deleteSelected() {
@@ -271,8 +342,8 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     // Place new photos in a grid, offset from existing items
     const cols = Math.ceil(Math.sqrt(newPhotoIds.length));
     const spacing = DEFAULT_W + 40;
-    const startX = 100 + (items.length > 0 ? 50 : (CANVAS_W - cols * spacing) / 2);
-    const startY = 100 + (items.length > 0 ? 50 : (CANVAS_H - Math.ceil(newPhotoIds.length / cols) * spacing) / 2);
+    const startX = 100 + (items.length > 0 ? 50 : (canvasW - cols * spacing) / 2);
+    const startY = 100 + (items.length > 0 ? 50 : (canvasH - Math.ceil(newPhotoIds.length / cols) * spacing) / 2);
     let currentZ = maxZ;
 
     const newRows = newPhotoIds.map((pid, i) => ({
@@ -298,12 +369,58 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     return allPhotos.filter(p => p._collections.has(pickerFilter));
   }
 
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      wallContainerRef.current?.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  }
+
+  // ─── Wall settings ──────────────────────────────────────────
+
+  function openSettings() {
+    if (!activeWall) return;
+    setSettingsWidthM(((activeWall.physical_width_cm || 600) / 100).toString());
+    setSettingsHeightM(((activeWall.physical_height_cm || 220) / 100).toString());
+    setSettingsBg(activeWall.background_color || '#ffffff');
+    setShowSettings(true);
+  }
+
+  async function saveSettings() {
+    if (!activeWall) return;
+    const physW = Math.max(50, Math.round(parseFloat(settingsWidthM) * 100) || 600);
+    const physH = Math.max(50, Math.round(parseFloat(settingsHeightM) * 100) || 220);
+    const bg = settingsBg || '#ffffff';
+    const updates = { physical_width_cm: physW, physical_height_cm: physH, background_color: bg, updated_at: new Date().toISOString() };
+    await supabase.from('walls').update(updates).eq('id', activeWall.id);
+    const updatedWall = { ...activeWall, ...updates };
+    setActiveWall(updatedWall);
+    setWalls(prev => prev.map(w => w.id === activeWall.id ? updatedWall : w));
+    setShowSettings(false);
+  }
+
   // ─── Photo helpers ───────────────────────────────────────────
 
   function getPhoto(pid) {
     return photos.find(p => p.id === pid) || allPhotos.find(p => p.id === pid);
   }
   function getAspect(pid) { return aspectRatios[pid] || 0.75; }
+
+  // Canvas dimensions derived from wall physical size
+  const canvasW = (activeWall?.physical_width_cm || 600) * PX_PER_CM;
+  const canvasH = (activeWall?.physical_height_cm || 220) * PX_PER_CM;
+
+  // Scale: how many cm per canvas pixel
+  function getCmPerPixel() {
+    return 1 / PX_PER_CM;
+  }
+
+  // Format cm → human readable (e.g. "1.20 m" or "45 cm")
+  function formatDim(cm) {
+    if (cm >= 100) return `${(cm / 100).toFixed(2)} m`;
+    return `${Math.round(cm)} cm`;
+  }
 
   function handleImgLoad(e, pid) {
     const { naturalWidth, naturalHeight } = e.target;
@@ -507,6 +624,36 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                 placeholder={lang === 'fr' ? 'Mon mur...' : 'My wall...'}
                 autoFocus
               />
+              <label className="wall-dialog-label">
+                {lang === 'fr' ? 'Dimensions du mur' : 'Wall dimensions'}
+              </label>
+              <div className="wall-dialog-dims">
+                <div className="wall-dim-field">
+                  <input
+                    className="wall-dialog-input wall-dim-input"
+                    type="number"
+                    step="0.1"
+                    min="0.5"
+                    max="20"
+                    value={newWallWidthM}
+                    onChange={(e) => setNewWallWidthM(e.target.value)}
+                  />
+                  <span className="wall-dim-unit">m {lang === 'fr' ? 'largeur' : 'width'}</span>
+                </div>
+                <span className="wall-dim-x">×</span>
+                <div className="wall-dim-field">
+                  <input
+                    className="wall-dialog-input wall-dim-input"
+                    type="number"
+                    step="0.1"
+                    min="0.5"
+                    max="10"
+                    value={newWallHeightM}
+                    onChange={(e) => setNewWallHeightM(e.target.value)}
+                  />
+                  <span className="wall-dim-unit">m {lang === 'fr' ? 'hauteur' : 'height'}</span>
+                </div>
+              </div>
               {pendingPhotoIds?.length > 0 && (
                 <p className="wall-dialog-hint">
                   {pendingPhotoIds.length} photo{pendingPhotoIds.length > 1 ? 's' : ''} {lang === 'fr' ? 'seront ajoutées' : 'will be added'}
@@ -530,7 +677,7 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
   // ─── Render: Active wall canvas ──────────────────────────────
 
   return (
-    <div className="wall-container">
+    <div className={`wall-container ${isFullscreen ? 'wall-fullscreen' : ''}`} ref={wallContainerRef}>
       {/* Toolbar */}
       <div className="wall-toolbar">
         <div className="wall-toolbar-left">
@@ -551,12 +698,18 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
               {wallName}
             </h3>
           )}
+          <button className="wall-physical-dims" onClick={openSettings} title={lang === 'fr' ? 'Modifier les paramètres du mur' : 'Edit wall settings'}>
+            ⚙️ {((activeWall.physical_width_cm || 600) / 100).toFixed(1)}m × {((activeWall.physical_height_cm || 220) / 100).toFixed(1)}m
+          </button>
         </div>
         <div className="wall-toolbar-center">
           <button className="wall-zoom-btn" onClick={() => setZoom(z => Math.min(3, +(z + 0.1).toFixed(2)))}>+</button>
           <span className="wall-zoom-label">{Math.round(zoom * 100)}%</span>
           <button className="wall-zoom-btn" onClick={() => setZoom(z => Math.max(0.1, +(z - 0.1).toFixed(2)))}>−</button>
           <button className="wall-zoom-btn" onClick={() => { setZoom(0.5); setPan({ x: 0, y: 0 }); }} title={lang === 'fr' ? 'Recentrer' : 'Reset view'}>⌂</button>
+          <button className="wall-fullscreen-btn" onClick={toggleFullscreen} title={lang === 'fr' ? 'Plein écran' : 'Fullscreen'}>
+            {isFullscreen ? '✕' : '⛶'}
+          </button>
         </div>
         <div className="wall-toolbar-right">
           {/* Share toggle */}
@@ -573,15 +726,23 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
             </button>
           )}
           <span className="wall-toolbar-sep">|</span>
+          <button
+            className={`wall-toggle-dims-btn ${showDims ? 'active' : ''}`}
+            onClick={() => setShowDims(d => !d)}
+            title={lang === 'fr' ? 'Afficher/masquer les dimensions' : 'Show/hide dimensions'}
+          >
+            📏 {lang === 'fr' ? 'Dims' : 'Dims'}
+          </button>
+          <button
+            className={`wall-toggle-person-btn ${showPerson ? 'active' : ''}`}
+            onClick={() => setShowPerson(p => !p)}
+            title={lang === 'fr' ? 'Afficher/masquer le personnage repère' : 'Show/hide reference person'}
+          >
+            🧍 {lang === 'fr' ? 'Repère' : 'Scale'}
+          </button>
           <button className="wall-add-photos-btn" onClick={openPhotoPicker}>
             ➕ {lang === 'fr' ? 'Ajouter' : 'Add'}
           </button>
-          <span className="wall-toolbar-sep">|</span>
-          {selectedId && (
-            <button className="wall-delete-item-btn" onClick={deleteSelected}>
-              🗑 {lang === 'fr' ? 'Supprimer photo' : 'Delete photo'}
-            </button>
-          )}
           <span className="wall-item-count">{items.length} photo{items.length !== 1 ? 's' : ''}</span>
           <span className="wall-toolbar-sep">|</span>
           <button className="wall-delete-wall-btn" onClick={() => deleteWall(activeWall.id)}>
@@ -590,25 +751,91 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
         </div>
       </div>
 
+      {/* Secondary toolbar — selected photo actions */}
+      {selectedId && (() => {
+        const selItem = items.find(i => i.id === selectedId);
+        const selPhoto = selItem ? getPhoto(selItem.photo_id) : null;
+        const selAspect = selItem ? getAspect(selItem.photo_id) : 1;
+        const cpp = getCmPerPixel();
+        return (
+          <div className="wall-toolbar wall-toolbar-secondary">
+            <div className="wall-toolbar-secondary-left">
+              <span className="wall-selected-label">📷 {selPhoto?.photo_name || selPhoto?.file_name || (lang === 'fr' ? 'Photo sélectionnée' : 'Selected photo')}</span>
+              {selItem && (
+                <span className="wall-selected-dims">
+                  {formatDim(selItem.width * cpp)} × {formatDim(selItem.width * selAspect * cpp)}
+                </span>
+              )}
+            </div>
+            <div className="wall-toolbar-frame">
+              <span className="wall-frame-label">🖼 {lang === 'fr' ? 'Cadre' : 'Frame'}</span>
+              <input
+                type="color"
+                className="wall-frame-color-input"
+                value={selItem.frame_color || '#3a2a1a'}
+                onChange={(e) => updateItemFrame(selItem.id, e.target.value, selItem.frame_width_cm ?? 0)}
+                title={lang === 'fr' ? 'Couleur du cadre' : 'Frame color'}
+              />
+              <div className="wall-frame-thickness">
+                <input
+                  type="number"
+                  className="wall-frame-thickness-input"
+                  min="0"
+                  max="15"
+                  step="0.5"
+                  value={selItem.frame_width_cm ?? 0}
+                  onChange={(e) => updateItemFrame(selItem.id, selItem.frame_color || '#3a2a1a', parseFloat(e.target.value) || 0)}
+                  title={lang === 'fr' ? 'Épaisseur en cm' : 'Thickness in cm'}
+                />
+                <span className="wall-frame-unit">cm</span>
+              </div>
+              {(selItem.frame_width_cm > 0) && (
+                <button
+                  className="wall-frame-remove-btn"
+                  onClick={() => updateItemFrame(selItem.id, null, 0)}
+                  title={lang === 'fr' ? 'Retirer le cadre' : 'Remove frame'}
+                >✕</button>
+              )}
+            </div>
+            <div className="wall-toolbar-secondary-right">
+              <button className="wall-delete-item-btn" onClick={deleteSelected}>
+                🗑 {lang === 'fr' ? 'Supprimer photo' : 'Delete photo'}
+              </button>
+              <button className="wall-deselect-btn" onClick={() => setSelectedId(null)}>
+                ✕ {lang === 'fr' ? 'Désélectionner' : 'Deselect'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Canvas viewport */}
       <div className="wall-viewport" ref={viewportRef}>
-        <div
-          className="wall-canvas"
-          ref={canvasRef}
-          style={{
-            width: CANVAS_W,
-            height: CANVAS_H,
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: '0 0',
-          }}
-          onPointerDown={startPan}
-        >
+        <div className="wall-room" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
+          <div className="wall-room-ceiling" style={{ width: canvasW, height: canvasH * 0.25 }}></div>
+          <div className="wall-room-middle">
+            <div className="wall-room-left" style={{ width: canvasW * 0.12, height: canvasH }}></div>
+            <div
+              className="wall-canvas"
+              ref={canvasRef}
+              style={{
+                width: canvasW,
+                height: canvasH,
+                backgroundColor: activeWall.background_color || '#ffffff',
+              }}
+              onPointerDown={startPan}
+            >
           {items.map(item => {
             const photo = getPhoto(item.photo_id);
             if (!photo) return null;
             const aspect = getAspect(item.photo_id);
             const h = item.width * aspect;
             const isSelected = selectedId === item.id;
+            const cpp = getCmPerPixel();
+            const physW = item.width * cpp;
+            const physH = h * cpp;
+            const distTop = item.pos_y * cpp;
+            const distBottom = (canvasH - item.pos_y - h) * cpp;
 
             return (
               <div
@@ -620,6 +847,12 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                   width: item.width,
                   height: h,
                   zIndex: item.z_index,
+                  ...(item.frame_width_cm > 0 ? {
+                    borderWidth: item.frame_width_cm * PX_PER_CM,
+                    borderStyle: 'solid',
+                    borderColor: item.frame_color || '#3a2a1a',
+                    borderRadius: 1,
+                  } : {}),
                 }}
                 onPointerDown={(e) => startMove(e, item.id)}
               >
@@ -629,6 +862,31 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                   draggable={false}
                   onLoad={(e) => handleImgLoad(e, item.photo_id)}
                 />
+                {showDims && (
+                  <>
+                    <div className="wall-item-dims">
+                      {formatDim(physW)} × {formatDim(physH)}
+                    </div>
+                    {/* Ruler: top of wall → top of photo */}
+                    {item.pos_y > 5 && (
+                      <div className="wall-ruler wall-ruler-top" style={{ height: item.pos_y, bottom: '100%', left: '50%' }}>
+                        <div className="wall-ruler-line"></div>
+                        <div className="wall-ruler-tick wall-ruler-tick-start"></div>
+                        <div className="wall-ruler-tick wall-ruler-tick-end"></div>
+                        <span className="wall-ruler-label">{formatDim(distTop)}</span>
+                      </div>
+                    )}
+                    {/* Ruler: bottom of photo → bottom of wall */}
+                    {(canvasH - item.pos_y - h) > 5 && (
+                      <div className="wall-ruler wall-ruler-bottom" style={{ height: canvasH - item.pos_y - h, top: '100%', left: '50%' }}>
+                        <div className="wall-ruler-line"></div>
+                        <div className="wall-ruler-tick wall-ruler-tick-start"></div>
+                        <div className="wall-ruler-tick wall-ruler-tick-end"></div>
+                        <span className="wall-ruler-label">{formatDim(distBottom)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
                 {isSelected && ['nw', 'ne', 'sw', 'se'].map(corner => (
                   <div
                     key={corner}
@@ -639,6 +897,38 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
               </div>
             );
           })}
+        </div>
+            <div className="wall-room-right" style={{ width: canvasW * 0.12, height: canvasH }}></div>
+          </div>
+          <div className="wall-room-floor" style={{ width: canvasW, height: canvasH * 0.35 }}>
+            {showPerson && (() => {
+              const personHeightCm = 175;
+              const personH = personHeightCm * PX_PER_CM;
+              const personW = personH * 0.32;
+              const overflow = Math.max(0, personH - canvasH * 0.35);
+              return (
+                <div className="wall-person" style={{ width: personW, height: personH, bottom: 0, right: canvasW * 0.06 }}>
+                  <svg viewBox="0 0 120 375" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                    {/* Head */}
+                    <circle cx="60" cy="28" r="24" fill="#555" opacity="0.55" />
+                    {/* Neck */}
+                    <rect x="52" y="52" width="16" height="14" rx="4" fill="#555" opacity="0.55" />
+                    {/* Torso */}
+                    <path d="M30 66 Q60 60 90 66 L85 190 Q60 195 35 190 Z" fill="#555" opacity="0.50" />
+                    {/* Left arm */}
+                    <path d="M30 70 Q18 130 22 185 L30 185 Q34 132 40 76 Z" fill="#555" opacity="0.45" />
+                    {/* Right arm */}
+                    <path d="M90 70 Q102 130 98 185 L90 185 Q86 132 80 76 Z" fill="#555" opacity="0.45" />
+                    {/* Left leg */}
+                    <path d="M38 188 Q34 280 30 365 L48 365 Q48 280 50 188 Z" fill="#555" opacity="0.50" />
+                    {/* Right leg */}
+                    <path d="M70 188 Q72 280 72 365 L90 365 Q86 280 82 188 Z" fill="#555" opacity="0.50" />
+                  </svg>
+                  <div className="wall-person-label">1,75 m</div>
+                </div>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
@@ -698,6 +988,65 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                 onClick={addPhotosFromPicker}
               >
                 {lang === 'fr' ? `Ajouter ${pickerSelected.size || ''}` : `Add ${pickerSelected.size || ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings modal */}
+      {showSettings && (
+        <div className="wall-dialog-overlay" onClick={() => setShowSettings(false)}>
+          <div className="wall-dialog wall-settings-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>{lang === 'fr' ? 'Paramètres du mur' : 'Wall Settings'}</h3>
+            <label className="wall-dialog-label">
+              {lang === 'fr' ? 'Dimensions du mur' : 'Wall dimensions'}
+            </label>
+            <div className="wall-dialog-dims">
+              <div className="wall-dim-field">
+                <input
+                  className="wall-dialog-input wall-dim-input"
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="20"
+                  value={settingsWidthM}
+                  onChange={(e) => setSettingsWidthM(e.target.value)}
+                />
+                <span className="wall-dim-unit">m {lang === 'fr' ? 'largeur' : 'width'}</span>
+              </div>
+              <span className="wall-dim-x">×</span>
+              <div className="wall-dim-field">
+                <input
+                  className="wall-dialog-input wall-dim-input"
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="10"
+                  value={settingsHeightM}
+                  onChange={(e) => setSettingsHeightM(e.target.value)}
+                />
+                <span className="wall-dim-unit">m {lang === 'fr' ? 'hauteur' : 'height'}</span>
+              </div>
+            </div>
+            <label className="wall-dialog-label">
+              {lang === 'fr' ? 'Couleur de fond' : 'Background color'}
+            </label>
+            <div className="wall-settings-color">
+              <input
+                type="color"
+                value={settingsBg}
+                onChange={(e) => setSettingsBg(e.target.value)}
+                className="wall-color-input"
+              />
+              <span className="wall-color-value">{settingsBg}</span>
+            </div>
+            <div className="wall-dialog-actions">
+              <button className="wall-dialog-cancel" onClick={() => setShowSettings(false)}>
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+              <button className="wall-dialog-confirm" onClick={saveSettings}>
+                {lang === 'fr' ? 'Enregistrer' : 'Save'}
               </button>
             </div>
           </div>

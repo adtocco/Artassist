@@ -335,19 +335,6 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
       </div>
 
       <div className="collections-list">
-        {/* "All photos" option */}
-        <div 
-          className={`collection-item ${!selectedCollection ? 'active' : ''}`}
-          onClick={() => handleSelectCollection(null)}
-        >
-          <div className="collection-icon all-photos">📸</div>
-          <div className="collection-info">
-            <span className="collection-name">
-              {lang === 'fr' ? 'Toutes les photos' : 'All Photos'}
-            </span>
-          </div>
-        </div>
-
         {/* "No collection" option */}
         <div 
           className={`collection-item ${selectedCollection === 'none' ? 'active' : ''}`}
@@ -379,6 +366,9 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
             )}
             <div className="collection-info">
               <span className="collection-name">{collection.name}</span>
+              {collection.description && (
+                <span className="collection-description">{collection.description}</span>
+              )}
               <span className="collection-count">
                 {collection.photo_count?.[0]?.count || 0} {lang === 'fr' ? 'photos' : 'photos'}
               </span>

@@ -100,6 +100,20 @@ export default function SharedWall({ shareToken }) {
     window.addEventListener('pointerup', onUp);
   }
 
+  const CANVAS_W = wall?.canvas_width || 3000;
+  const PX_PER_CM = 5;
+  const canvasW = (wall?.physical_width_cm || 600) * PX_PER_CM;
+  const canvasH = (wall?.physical_height_cm || 220) * PX_PER_CM;
+
+  function getCmPerPixel() {
+    return (wall?.physical_width_cm || 600) / CANVAS_W;
+  }
+
+  function formatDim(cm) {
+    if (cm >= 100) return `${(cm / 100).toFixed(2)} m`;
+    return `${Math.round(cm)} cm`;
+  }
+
   if (loading) {
     return (
       <div className="shared-wall-loading">
@@ -122,6 +136,9 @@ export default function SharedWall({ shareToken }) {
     <div className="shared-wall">
       <header className="shared-wall-header">
         <h2>🖼 {wall.name}</h2>
+        <span className="shared-wall-dims">
+          {((wall.physical_width_cm || 600) / 100).toFixed(1)}m × {((wall.physical_height_cm || 220) / 100).toFixed(1)}m
+        </span>
         <div className="shared-wall-zoom">
           <button onClick={() => setZoom(z => Math.min(3, +(z + 0.1).toFixed(2)))}>+</button>
           <span>{Math.round(zoom * 100)}%</span>
@@ -134,11 +151,11 @@ export default function SharedWall({ shareToken }) {
         <div
           className="shared-wall-canvas"
           style={{
-            width: wall.canvas_width || 3000,
-            height: wall.canvas_height || 2000,
+            width: canvasW,
+            height: canvasH,
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
-            backgroundColor: wall.background_color || '#f5f5f5',
+            backgroundColor: wall.background_color || '#ffffff',
           }}
           onPointerDown={startPan}
         >
@@ -147,6 +164,9 @@ export default function SharedWall({ shareToken }) {
             if (!photo) return null;
             const aspect = aspectRatios[item.photo_id] || 0.75;
             const h = item.width * aspect;
+            const cpp = getCmPerPixel();
+            const physW = item.width * cpp;
+            const physH = h * cpp;
 
             return (
               <div
@@ -166,6 +186,9 @@ export default function SharedWall({ shareToken }) {
                   draggable={false}
                   onLoad={(e) => handleImgLoad(e, item.photo_id)}
                 />
+                <div className="shared-wall-item-dims">
+                  {formatDim(physW)} × {formatDim(physH)}
+                </div>
               </div>
             );
           })}
