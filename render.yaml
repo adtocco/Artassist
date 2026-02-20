@@ -15,11 +15,11 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY
-        sync: false
-      - key: VITE_OPENAI_API_KEY
         sync: false
       - key: NODE_ENV
         value: production
