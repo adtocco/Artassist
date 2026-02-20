@@ -78,6 +78,18 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [selectedPhotos, setSelectedPhotos] = useState(new Set());
   const [showMoveDialog, setShowMoveDialog] = useState(false);
 
+  // Series state
+  const [seriesList, setSeriesList] = useState([]);
+  const [showCreateSeriesDialog, setShowCreateSeriesDialog] = useState(false);
+  const [newSeriesName, setNewSeriesName] = useState('');
+  const [newSeriesDescription, setNewSeriesDescription] = useState('');
+  const [creatingSeries, setCreatingSeries] = useState(false);
+  const [activeSeries, setActiveSeries] = useState(null);
+  const [seriesPhotos, setSeriesPhotos] = useState([]);
+  const [analyzingSeriesItem, setAnalyzingSeriesItem] = useState(false);
+  const [seriesAnalysisResult, setSeriesAnalysisResult] = useState(null);
+  const [showSeriesPanel, setShowSeriesPanel] = useState(false);
+
   // Keyboard navigation for modal
   useEffect(() => {
     if (!selectedPhoto) return;
@@ -100,6 +112,14 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
 
   useEffect(() => {
     fetchPhotos();
+    if (selectedCollection?.id) {
+      fetchSeriesList();
+    } else {
+      setSeriesList([]);
+      setActiveSeries(null);
+      setSeriesAnalysisResult(null);
+      setShowSeriesPanel(false);
+    }
   }, [refreshTrigger, selectedCollection]);
 
   const fetchPhotos = async () => {
@@ -174,6 +194,166 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       console.error('Error fetching photos:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ---- Series functions ----
+  const fetchSeriesList = async () => {
+    if (!selectedCollection?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('collection_series')
+        .select(`
+          *,
+          photo_count:series_photos(count)
+        `)
+        .eq('collection_id', selectedCollection.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setSeriesList(data || []);
+    } catch (err) {
+      console.error('Error fetching series:', err);
+    }
+  };
+
+  const createSeries = async () => {
+    if (!newSeriesName.trim() || selectedPhotos.size === 0) return;
+    setCreatingSeries(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: series, error } = await supabase
+        .from('collection_series')
+        .insert({
+          collection_id: selectedCollection.id,
+          user_id: user.id,
+          name: newSeriesName.trim(),
+          description: newSeriesDescription.trim() || null
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Add selected photos to the series
+      const entries = Array.from(selectedPhotos).map(photoId => ({
+        series_id: series.id,
+        photo_id: photoId
+      }));
+      const { error: linkError } = await supabase
+        .from('series_photos')
+        .insert(entries);
+      if (linkError) throw linkError;
+
+      setShowCreateSeriesDialog(false);
+      setNewSeriesName('');
+      setNewSeriesDescription('');
+      setSelectedPhotos(new Set());
+      fetchSeriesList();
+    } catch (err) {
+      console.error('Error creating series:', err);
+      alert(lang === 'fr' ? 'Erreur lors de la création de la série' : 'Error creating series');
+    } finally {
+      setCreatingSeries(false);
+    }
+  };
+
+  const deleteSeries = async (seriesId) => {
+    const msg = lang === 'fr'
+      ? 'Supprimer cette série ? Les photos ne seront pas supprimées.'
+      : 'Delete this series? Photos will not be deleted.';
+    if (!confirm(msg)) return;
+    try {
+      const { error } = await supabase
+        .from('collection_series')
+        .delete()
+        .eq('id', seriesId);
+      if (error) throw error;
+      if (activeSeries?.id === seriesId) {
+        setActiveSeries(null);
+        setSeriesPhotos([]);
+        setSeriesAnalysisResult(null);
+      }
+      fetchSeriesList();
+    } catch (err) {
+      console.error('Error deleting series:', err);
+    }
+  };
+
+  const viewSeries = async (series) => {
+    setActiveSeries(series);
+    setSeriesAnalysisResult(series.analysis || null);
+    try {
+      const { data, error } = await supabase
+        .from('series_photos')
+        .select(`
+          id,
+          photo:photo_analyses(*)
+        `)
+        .eq('series_id', series.id);
+      if (error) throw error;
+      setSeriesPhotos((data || []).map(sp => sp.photo));
+    } catch (err) {
+      console.error('Error fetching series photos:', err);
+    }
+  };
+
+  const removePhotoFromSeries = async (photoId) => {
+    if (!activeSeries) return;
+    try {
+      const { error } = await supabase
+        .from('series_photos')
+        .delete()
+        .eq('series_id', activeSeries.id)
+        .eq('photo_id', photoId);
+      if (error) throw error;
+      setSeriesPhotos(prev => prev.filter(p => p.id !== photoId));
+      fetchSeriesList();
+    } catch (err) {
+      console.error('Error removing photo from series:', err);
+    }
+  };
+
+  const addSelectedToSeries = async (seriesId) => {
+    if (selectedPhotos.size === 0) return;
+    try {
+      const entries = Array.from(selectedPhotos).map(photoId => ({
+        series_id: seriesId,
+        photo_id: photoId
+      }));
+      // Use upsert to ignore duplicates
+      const { error } = await supabase
+        .from('series_photos')
+        .upsert(entries, { onConflict: 'series_id,photo_id', ignoreDuplicates: true });
+      if (error) throw error;
+      setSelectedPhotos(new Set());
+      fetchSeriesList();
+      if (activeSeries?.id === seriesId) {
+        viewSeries(activeSeries);
+      }
+    } catch (err) {
+      console.error('Error adding photos to series:', err);
+      alert(lang === 'fr' ? 'Erreur lors de l\'ajout' : 'Error adding photos');
+    }
+  };
+
+  const analyzeSeriesItem = async () => {
+    if (seriesPhotos.length < 2) {
+      alert(lang === 'fr' ? 'Il faut au moins 2 photos pour analyser une série' : 'You need at least 2 photos to analyze a series');
+      return;
+    }
+    setAnalyzingSeriesItem(true);
+    try {
+      const result = await findPhotoSeries(seriesPhotos, lang, activeSeries?.description || '');
+      setSeriesAnalysisResult(result);
+      // Save analysis to DB
+      await supabase
+        .from('collection_series')
+        .update({ analysis: result, updated_at: new Date().toISOString() })
+        .eq('id', activeSeries.id);
+    } catch (err) {
+      console.error('Error analyzing series:', err);
+      alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
+    } finally {
+      setAnalyzingSeriesItem(false);
     }
   };
 
@@ -567,6 +747,27 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             >
               🔄 {lang === 'fr' ? 'Ré-analyser' : 'Re-analyze'}
             </button>
+            {selectedCollection?.id && (
+              <button
+                onClick={() => setShowCreateSeriesDialog(true)}
+                className="create-series-from-selection-btn"
+              >
+                📋 {lang === 'fr' ? 'Créer une série' : 'Create Series'}
+              </button>
+            )}
+            {selectedCollection?.id && seriesList.length > 0 && (
+              <div className="add-to-series-dropdown">
+                <select
+                  onChange={(e) => { if (e.target.value) { addSelectedToSeries(e.target.value); e.target.value = ''; } }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>{lang === 'fr' ? '+ Ajouter à une série' : '+ Add to series'}</option>
+                  {seriesList.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button 
               onClick={() => setSelectedPhotos(new Set())}
               className="clear-selection-btn"
@@ -591,7 +792,152 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         >
           📥 {lang === 'fr' ? 'Exporter JSON' : 'Export JSON'}
         </button>
+        {selectedCollection?.id && (
+          <button
+            onClick={() => setShowSeriesPanel(!showSeriesPanel)}
+            className={`series-panel-toggle-btn ${showSeriesPanel ? 'active' : ''}`}
+          >
+            📋 {lang === 'fr' ? 'Séries' : 'Series'} {seriesList.length > 0 && `(${seriesList.length})`}
+          </button>
+        )}
       </div>
+
+      {/* Series Panel */}
+      {showSeriesPanel && selectedCollection?.id && (
+        <div className="series-panel">
+          <div className="series-panel-header">
+            <h3>📋 {lang === 'fr' ? 'Séries de la collection' : 'Collection Series'}</h3>
+          </div>
+
+          {seriesList.length === 0 ? (
+            <p className="series-empty-text">
+              {lang === 'fr'
+                ? 'Aucune série. Sélectionnez des photos puis cliquez "Créer une série".'
+                : 'No series yet. Select photos then click "Create Series".'}
+            </p>
+          ) : (
+            <div className="series-list">
+              {seriesList.map(s => (
+                <div
+                  key={s.id}
+                  className={`series-list-item ${activeSeries?.id === s.id ? 'active' : ''}`}
+                >
+                  <div className="series-list-item-info" onClick={() => viewSeries(s)}>
+                    <span className="series-list-item-name">{s.name}</span>
+                    <span className="series-list-item-count">
+                      {s.photo_count?.[0]?.count || 0} {lang === 'fr' ? 'photos' : 'photos'}
+                    </span>
+                    {s.analysis && <span className="series-analyzed-badge">✓ {lang === 'fr' ? 'Analysée' : 'Analyzed'}</span>}
+                  </div>
+                  <button
+                    className="series-delete-btn"
+                    onClick={(e) => { e.stopPropagation(); deleteSeries(s.id); }}
+                    title={lang === 'fr' ? 'Supprimer la série' : 'Delete series'}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Active Series Detail */}
+          {activeSeries && (
+            <div className="series-detail">
+              <div className="series-detail-header">
+                <h4>{activeSeries.name}</h4>
+                {activeSeries.description && <p className="series-description">{activeSeries.description}</p>}
+                <div className="series-detail-actions">
+                  <button
+                    onClick={analyzeSeriesItem}
+                    disabled={analyzingSeriesItem || seriesPhotos.length < 2}
+                    className="analyze-series-item-btn"
+                  >
+                    {analyzingSeriesItem
+                      ? (lang === 'fr' ? '⏳ Analyse en cours...' : '⏳ Analyzing...')
+                      : '🎯 ' + (lang === 'fr' ? 'Analyser la série' : 'Analyze Series')}
+                  </button>
+                  <button
+                    onClick={() => { setActiveSeries(null); setSeriesPhotos([]); setSeriesAnalysisResult(null); }}
+                    className="close-series-btn"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Series photos thumbnails */}
+              <div className="series-photos-grid">
+                {seriesPhotos.map(photo => (
+                  <div key={photo.id} className="series-photo-thumb">
+                    <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
+                    <span className="series-photo-name">{photo.photo_name || photo.file_name}</span>
+                    <button
+                      className="series-photo-remove"
+                      onClick={() => removePhotoFromSeries(photo.id)}
+                      title={lang === 'fr' ? 'Retirer de la série' : 'Remove from series'}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Series Analysis Result */}
+              {seriesAnalysisResult && (
+                <div className="series-analysis-result">
+                  <h5>📊 {lang === 'fr' ? 'Analyse de la série' : 'Series Analysis'}</h5>
+                  <div className="recommendation-content markdown-content">
+                    {renderMarkdown(seriesAnalysisResult)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Series Dialog */}
+      {showCreateSeriesDialog && (
+        <div className="modal-overlay" onClick={() => setShowCreateSeriesDialog(false)}>
+          <div className="save-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>📋 {lang === 'fr' ? 'Créer une série' : 'Create a Series'}</h3>
+            <p className="create-series-info">
+              {selectedPhotos.size} {lang === 'fr' ? 'photo(s) sélectionnée(s)' : 'photo(s) selected'}
+            </p>
+            <input
+              type="text"
+              placeholder={lang === 'fr' ? 'Nom de la série...' : 'Series name...'}
+              value={newSeriesName}
+              onChange={(e) => setNewSeriesName(e.target.value)}
+              className="series-title-input"
+              autoFocus
+            />
+            <textarea
+              placeholder={lang === 'fr' ? 'Description / instructions pour l\'analyse (optionnel)...' : 'Description / analysis instructions (optional)...'}
+              value={newSeriesDescription}
+              onChange={(e) => setNewSeriesDescription(e.target.value)}
+              className="series-description-input"
+              rows={3}
+            />
+            <div className="save-dialog-buttons">
+              <button
+                onClick={createSeries}
+                disabled={creatingSeries || !newSeriesName.trim()}
+                className="save-private-button"
+              >
+                📋 {lang === 'fr' ? 'Créer' : 'Create'}
+              </button>
+              <button
+                onClick={() => setShowCreateSeriesDialog(false)}
+                className="cancel-button"
+              >
+                {lang === 'fr' ? 'Annuler' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {seriesRecommendation && (
         <div className="series-recommendation">
