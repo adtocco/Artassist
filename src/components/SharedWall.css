@@ -1,0 +1,123 @@
+/* ===== Shared Wall (public view) ===== */
+.shared-wall {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #1a1a2e;
+  color: white;
+}
+
+.shared-wall-loading,
+.shared-wall-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #1a1a2e;
+  color: white;
+  gap: 16px;
+}
+
+.shared-wall-error h2 {
+  font-size: 3em;
+  margin: 0;
+}
+
+.shared-wall-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  flex-shrink: 0;
+}
+
+.shared-wall-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.shared-wall-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shared-wall-zoom button {
+  width: 30px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.shared-wall-zoom button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.shared-wall-zoom span {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+}
+
+.shared-wall-viewport {
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.shared-wall-viewport:active {
+  cursor: grabbing;
+}
+
+.shared-wall-canvas {
+  position: relative;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  will-change: transform;
+}
+
+.shared-wall-item {
+  position: absolute;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.15);
+  border: 4px solid white;
+  border-radius: 2px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.shared-wall-item:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.shared-wall-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.shared-wall-footer {
+  padding: 8px 20px;
+  background: rgba(0, 0, 0, 0.3);
+  text-align: center;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}

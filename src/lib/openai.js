@@ -102,6 +102,175 @@ Evaluate how this photo can serve marketing objectives: brand awareness, lead ge
   }
 };
 
+// Default prompts exposed for the Profile editor
+export const DEFAULT_PROMPTS = {
+  photo: {
+    fr: `Vous êtes un critique d'art expert analysant des photographies d'un point de vue artistique.
+Concentrez-vous sur : la composition, l'éclairage, la théorie des couleurs, l'impact émotionnel,
+l'exécution technique, l'originalité et le mérite artistique.
+
+IMPORTANT : Analysez TOUJOURS la photo d'un point de vue artistique, même si elle contient des personnes.
+Ne tentez JAMAIS d'identifier les personnes. Analysez uniquement les aspects techniques et artistiques de l'image.`,
+    en: `You are an expert art critic analyzing photographs from an artistic perspective.
+Focus on: composition, lighting, color theory, emotional impact,
+technical execution, originality, and artistic merit.
+
+IMPORTANT: ALWAYS analyze the photo from an artistic perspective, even if it contains people.
+NEVER attempt to identify people. Only analyze the technical and artistic aspects of the image.`
+  },
+  collection: {
+    fr: `Vous êtes un conservateur d'art expert analysant une collection de photographies.
+Votre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.`,
+    en: `You are an expert art curator analyzing a collection of photographs.
+Your task is to identify which photos work well together as a series, which ones are the most interesting individually, and to provide clear reasons for your recommendations.`
+  },
+  series: {
+    fr: `Vous êtes un conservateur d'art expert spécialisé dans les séries photographiques.
+Analysez ce groupe de photos en tant que série cohérente. Évaluez la cohérence visuelle, la progression narrative, les thèmes récurrents, et comment les photos dialoguent entre elles. Proposez un ordre optimal et des recommandations pour renforcer la série.`,
+    en: `You are an expert art curator specialized in photographic series.
+Analyze this group of photos as a coherent series. Evaluate visual consistency, narrative progression, recurring themes, and how the photos interact with each other. Suggest an optimal order and recommendations to strengthen the series.`
+  }
+};
+
+// Preset prompt options for each analysis type
+export const PROMPT_PRESETS = {
+  photo: [
+    {
+      id: 'artistic',
+      labelFr: '🎨 Critique artistique',
+      labelEn: '🎨 Artistic Critique',
+      descFr: 'Analyse complète d\'un point de vue artistique : composition, lumière, couleurs, émotion',
+      descEn: 'Full analysis from an artistic perspective: composition, light, colors, emotion',
+      prompt: {
+        fr: `Vous êtes un critique d'art expert analysant des photographies d'un point de vue artistique.
+Concentrez-vous sur : la composition, l'éclairage, la théorie des couleurs, l'impact émotionnel,
+l'exécution technique, l'originalité et le mérite artistique.
+
+IMPORTANT : Analysez TOUJOURS la photo d'un point de vue artistique, même si elle contient des personnes.
+Ne tentez JAMAIS d'identifier les personnes. Analysez uniquement les aspects techniques et artistiques de l'image.`,
+        en: `You are an expert art critic analyzing photographs from an artistic perspective.
+Focus on: composition, lighting, color theory, emotional impact,
+technical execution, originality, and artistic merit.
+
+IMPORTANT: ALWAYS analyze the photo from an artistic perspective, even if it contains people.
+NEVER attempt to identify people. Only analyze the technical and artistic aspects of the image.`
+      }
+    },
+    {
+      id: 'gallery',
+      labelFr: '🖼️ Conservateur de galerie',
+      labelEn: '🖼️ Gallery Curator',
+      descFr: 'Évalue le potentiel d\'exposition, la commercialisabilité et l\'attrait pour les collectionneurs',
+      descEn: 'Evaluates exhibition potential, marketability and collector appeal',
+      prompt: {
+        fr: `Vous êtes un conservateur de galerie évaluant des photographies pour leur potentiel d'exposition.
+Concentrez-vous sur : commercialisabilité, attrait en galerie, cohérence thématique, impact visuel
+dans l'espace d'exposition, intérêt des collectionneurs et adéquation avec les tendances du marché.
+
+IMPORTANT : Analysez TOUJOURS la photo, même si elle contient des personnes. Ne tentez pas de les identifier,
+analysez uniquement la qualité artistique et le potentiel d'exposition.`,
+        en: `You are a gallery curator evaluating photographs for their exhibition potential.
+Focus on: marketability, gallery appeal, thematic consistency, visual impact
+in exhibition spaces, collector interest and alignment with market trends.
+
+IMPORTANT: ALWAYS analyze the photo, even if it contains people. Do not attempt to identify them,
+only analyze the artistic quality and exhibition potential.`
+      }
+    },
+    {
+      id: 'pedagogical',
+      labelFr: '📚 Pédagogique',
+      labelEn: '📚 Pedagogical',
+      descFr: 'Analyse détaillée avec conseils d\'amélioration concrets pour progresser en photographie',
+      descEn: 'Detailed analysis with concrete improvement tips for photography progression',
+      prompt: {
+        fr: `Vous êtes un professeur de photographie bienveillant et expérimenté. Analysez cette photographie en mettant l'accent sur l'apprentissage. Pour chaque aspect (composition, lumière, couleurs, technique), expliquez ce qui fonctionne bien et pourquoi, puis proposez des pistes d'amélioration concrètes et réalisables. Utilisez un ton encourageant et pédagogique. Suggérez des exercices pratiques liés aux points à améliorer.
+
+IMPORTANT : Analysez TOUJOURS la photo d'un point de vue pédagogique, même si elle contient des personnes.
+Ne tentez JAMAIS d'identifier les personnes. Concentrez-vous sur les aspects techniques et artistiques.`,
+        en: `You are a kind and experienced photography teacher. Analyze this photograph with a focus on learning. For each aspect (composition, light, colors, technique), explain what works well and why, then suggest concrete and achievable improvement paths. Use an encouraging and pedagogical tone. Suggest practical exercises related to areas for improvement.
+
+IMPORTANT: ALWAYS analyze the photo from a pedagogical perspective, even if it contains people.
+NEVER attempt to identify people. Focus on technical and artistic aspects.`
+      }
+    }
+  ],
+  collection: [
+    {
+      id: 'curator',
+      labelFr: '🏛️ Conservateur d\'exposition',
+      labelEn: '🏛️ Exhibition Curator',
+      descFr: 'Identifie les séries potentielles et les photos fortes pour une exposition cohérente',
+      descEn: 'Identifies potential series and strong photos for a coherent exhibition',
+      prompt: {
+        fr: `Vous êtes un conservateur d'art expert analysant une collection de photographies.
+Votre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.`,
+        en: `You are an expert art curator analyzing a collection of photographs.
+Your task is to identify which photos work well together as a series, which ones are the most interesting individually, and to provide clear reasons for your recommendations.`
+      }
+    },
+    {
+      id: 'storytelling',
+      labelFr: '📖 Narratif',
+      labelEn: '📖 Storytelling',
+      descFr: 'Cherche le fil narratif et les histoires visuelles au sein de la collection',
+      descEn: 'Seeks the narrative thread and visual stories within the collection',
+      prompt: {
+        fr: `Vous êtes un directeur artistique spécialisé dans la narration visuelle. Analysez cette collection de photographies en cherchant les fils narratifs possibles. Identifiez les photos qui racontent une histoire ensemble, les transitions visuelles naturelles entre les images, et proposez des séquences narratives cohérentes. Évaluez comment les photos peuvent être arrangées pour créer un récit visuel captivant.`,
+        en: `You are an art director specialized in visual storytelling. Analyze this collection of photographs by looking for possible narrative threads. Identify photos that tell a story together, natural visual transitions between images, and propose coherent narrative sequences. Evaluate how photos can be arranged to create a captivating visual narrative.`
+      }
+    },
+    {
+      id: 'portfolio',
+      labelFr: '💼 Portfolio',
+      labelEn: '💼 Portfolio',
+      descFr: 'Sélectionne les meilleures photos et groupements pour un portfolio professionnel',
+      descEn: 'Selects the best photos and groupings for a professional portfolio',
+      prompt: {
+        fr: `Vous êtes un consultant en portfolio photographique professionnel. Analysez cette collection pour identifier les images les plus fortes qui mériteraient de figurer dans un portfolio. Évaluez la diversité technique, la cohérence stylistique, et suggérez des regroupements thématiques. Identifiez les photos redondantes et celles qui apportent une valeur unique. Proposez une sélection optimale avec justification.`,
+        en: `You are a professional photography portfolio consultant. Analyze this collection to identify the strongest images worthy of a portfolio. Evaluate technical diversity, stylistic consistency, and suggest thematic groupings. Identify redundant photos and those that bring unique value. Propose an optimal selection with justification.`
+      }
+    }
+  ],
+  series: [
+    {
+      id: 'coherence',
+      labelFr: '🔗 Cohérence visuelle',
+      labelEn: '🔗 Visual Coherence',
+      descFr: 'Évalue la cohérence visuelle, les thèmes récurrents et l\'ordre optimal',
+      descEn: 'Evaluates visual coherence, recurring themes and optimal order',
+      prompt: {
+        fr: `Vous êtes un conservateur d'art expert spécialisé dans les séries photographiques.
+Analysez ce groupe de photos en tant que série cohérente. Évaluez la cohérence visuelle, la progression narrative, les thèmes récurrents, et comment les photos dialoguent entre elles. Proposez un ordre optimal et des recommandations pour renforcer la série.`,
+        en: `You are an expert art curator specialized in photographic series.
+Analyze this group of photos as a coherent series. Evaluate visual consistency, narrative progression, recurring themes, and how the photos interact with each other. Suggest an optimal order and recommendations to strengthen the series.`
+      }
+    },
+    {
+      id: 'editorial',
+      labelFr: '📰 Éditorial',
+      labelEn: '📰 Editorial',
+      descFr: 'Analyse pour une publication éditoriale : rythme, impact, mise en page',
+      descEn: 'Analysis for editorial publication: rhythm, impact, layout',
+      prompt: {
+        fr: `Vous êtes un directeur de publication spécialisé dans la photographie éditoriale. Analysez cette série de photos comme si elle devait être publiée dans un magazine d'art. Évaluez le rythme visuel, l'impact de l'ouverture et de la fermeture, les points forts visuels. Proposez un séquencement optimal pour la publication, identifiez la photo de couverture idéale, et suggérez des associations de photos pour des doubles pages.`,
+        en: `You are a publication director specialized in editorial photography. Analyze this photo series as if it were to be published in an art magazine. Evaluate visual rhythm, opening and closing impact, visual highlights. Propose optimal sequencing for publication, identify the ideal cover photo, and suggest photo pairings for double-page spreads.`
+      }
+    },
+    {
+      id: 'emotional',
+      labelFr: '💫 Parcours émotionnel',
+      labelEn: '💫 Emotional Journey',
+      descFr: 'Analyse le parcours émotionnel et l\'arc narratif de la série',
+      descEn: 'Analyzes the emotional journey and narrative arc of the series',
+      prompt: {
+        fr: `Vous êtes un psychologue de l'art spécialisé dans l'impact émotionnel de la photographie. Analysez cette série en vous concentrant sur le parcours émotionnel qu'elle propose. Identifiez les émotions évoquées par chaque photo, comment elles se répondent, les tensions et résolutions visuelles. Proposez un arrangement qui maximise l'arc émotionnel et l'impact sur le spectateur.`,
+        en: `You are an art psychologist specialized in the emotional impact of photography. Analyze this series focusing on the emotional journey it proposes. Identify the emotions evoked by each photo, how they respond to each other, visual tensions and resolutions. Propose an arrangement that maximizes the emotional arc and viewer impact.`
+      }
+    }
+  ]
+};
+
 const JSON_STRUCTURE_FR = `IMPORTANT: Répondez UNIQUEMENT avec un objet JSON valide (sans texte avant ou après) avec cette structure exacte:
 {
   "name": "Titre Évocateur",
@@ -241,7 +410,11 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
     let systemPrompt;
     let isSocialMediaAnalysis = false;
     
-    if (collectionAnalysis && collectionAnalysis.type && COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type]) {
+    // Priority: user custom prompt > collection analysis type > promptType
+    if (userSettings?.prompt_photo_analysis) {
+      systemPrompt = userSettings.prompt_photo_analysis;
+      isSocialMediaAnalysis = (collectionAnalysis?.type === 'socialMedia') || promptType === 'socialMedia';
+    } else if (collectionAnalysis && collectionAnalysis.type && COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type]) {
       systemPrompt = COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type][lang] || COLLECTION_ANALYSIS_PROMPTS[collectionAnalysis.type].en;
       isSocialMediaAnalysis = collectionAnalysis.type === 'socialMedia';
       // Add custom instructions if provided
@@ -399,7 +572,7 @@ export async function analyzePhoto(imageUrl, promptType = 'artist', lang = 'fr',
   }
 }
 
-export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') {
+export async function findPhotoSeries(analyses, lang = 'fr', instructions = '', userSettings = null, analysisType = 'collection') {
   try {
     const analysisTexts = analyses.map((a) => {
       const name = a.photo_name || 'Sans titre';
@@ -425,7 +598,19 @@ export async function findPhotoSeries(analyses, lang = 'fr', instructions = '') 
       ? `FORMAT DE RÉPONSE: Utilisez UNIQUEMENT du Markdown pur. N'utilisez JAMAIS de balises HTML (<div>, <img>, <span>, etc.). Pour afficher les photos, utilisez EXCLUSIVEMENT la syntaxe Markdown image: ![nom](url). Placez chaque image sur sa propre ligne.`
       : `RESPONSE FORMAT: Use ONLY pure Markdown. NEVER use HTML tags (<div>, <img>, <span>, etc.). To display photos, use EXCLUSIVELY Markdown image syntax: ![name](url). Place each image on its own line.`;
 
-    const systemPrompt = `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
+    // Use custom prompt if available, depending on analysis type (collection vs series)
+    let basePrompt;
+    if (analysisType === 'series' && userSettings?.prompt_series_analysis) {
+      basePrompt = userSettings.prompt_series_analysis;
+    } else if (analysisType === 'collection' && userSettings?.prompt_collection_analysis) {
+      basePrompt = userSettings.prompt_collection_analysis;
+    } else {
+      basePrompt = lang === 'fr'
+        ? `Vous êtes un conservateur d'art expert analysant une collection de photographies.\nVotre tâche est d'identifier quelles photos fonctionnent bien ensemble en série, lesquelles sont les plus intéressantes individuellement, et de fournir des raisons claires pour vos recommandations.`
+        : `You are an expert art curator analyzing a collection of photographs.\nYour task is to identify which photos work well together as a series, which ones are the most interesting individually, and to provide clear reasons for your recommendations.`;
+    }
+
+    const systemPrompt = `${basePrompt}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
 
     const userMessage = `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`;
 

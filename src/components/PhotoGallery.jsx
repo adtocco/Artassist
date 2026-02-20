@@ -64,7 +64,7 @@ function renderMarkdown(text) {
   return elements;
 }
 
-export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null, onPhotosChanged = null }) {
+export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null, onPhotosChanged = null, onSendToWall = null }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -92,6 +92,12 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [seriesContext, setSeriesContext] = useState('');
   const [draggedPhotoIdx, setDraggedPhotoIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [gridColumns, setGridColumns] = useState(4);
+
+  // Gallery-to-series drag state
+  const [galleryDragPhotoId, setGalleryDragPhotoId] = useState(null);
+  const [dropTargetSeriesId, setDropTargetSeriesId] = useState(null);
+  const [dropTargetNewSeries, setDropTargetNewSeries] = useState(false);
 
   // Keyboard navigation for modal
   useEffect(() => {
@@ -349,6 +355,116 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     setDragOverIdx(null);
   };
 
+  // ---- Gallery-to-Series drag & drop ----
+  const handleGalleryDragStart = (e, photoId) => {
+    setGalleryDragPhotoId(photoId);
+    // If this photo is part of a selection, we'll drag all selected
+    const dragIds = selectedPhotos.has(photoId) && selectedPhotos.size > 1
+      ? Array.from(selectedPhotos)
+      : [photoId];
+    e.dataTransfer.setData('application/json', JSON.stringify(dragIds));
+    e.dataTransfer.effectAllowed = 'copy';
+    // Show drag count badge via a custom drag image
+    if (dragIds.length > 1) {
+      const badge = document.createElement('div');
+      badge.textContent = `${dragIds.length} photos`;
+      badge.style.cssText = 'position:absolute;top:-1000px;background:#6c63ff;color:white;padding:6px 14px;border-radius:20px;font-weight:600;font-size:14px;';
+      document.body.appendChild(badge);
+      e.dataTransfer.setDragImage(badge, 40, 20);
+      setTimeout(() => document.body.removeChild(badge), 0);
+    }
+  };
+
+  const handleGalleryDragEnd = () => {
+    setGalleryDragPhotoId(null);
+    setDropTargetSeriesId(null);
+    setDropTargetNewSeries(false);
+  };
+
+  const handleSeriesDragOver = (e, seriesId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropTargetSeriesId(seriesId);
+  };
+
+  const handleSeriesDragLeave = (e) => {
+    // Only clear if we're actually leaving the element (not entering a child)
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDropTargetSeriesId(null);
+    }
+  };
+
+  const handleSeriesDrop = async (e, seriesId) => {
+    e.preventDefault();
+    setDropTargetSeriesId(null);
+    try {
+      const dragIds = JSON.parse(e.dataTransfer.getData('application/json'));
+      const entries = dragIds.map(photoId => ({
+        series_id: seriesId,
+        photo_id: photoId
+      }));
+      const { error } = await supabase
+        .from('series_photos')
+        .upsert(entries, { onConflict: 'series_id,photo_id', ignoreDuplicates: true });
+      if (error) throw error;
+      setSelectedPhotos(new Set());
+      fetchSeriesList();
+      if (activeSeries?.id === seriesId) {
+        viewSeries(activeSeries);
+      }
+    } catch (err) {
+      console.error('Error adding photos to series via drag:', err);
+    }
+  };
+
+  const handleNewSeriesDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropTargetNewSeries(true);
+  };
+
+  const handleNewSeriesDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDropTargetNewSeries(false);
+    }
+  };
+
+  const handleNewSeriesDrop = async (e) => {
+    e.preventDefault();
+    setDropTargetNewSeries(false);
+    try {
+      const dragIds = JSON.parse(e.dataTransfer.getData('application/json'));
+      const name = prompt(lang === 'fr' ? 'Nom de la nouvelle série :' : 'New series name:');
+      if (!name || !name.trim()) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: series, error } = await supabase
+        .from('collection_series')
+        .insert({
+          collection_id: selectedCollection.id,
+          user_id: user.id,
+          name: name.trim()
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const entries = dragIds.map((photoId, i) => ({
+        series_id: series.id,
+        photo_id: photoId,
+        position: i
+      }));
+      await supabase
+        .from('series_photos')
+        .upsert(entries, { onConflict: 'series_id,photo_id', ignoreDuplicates: true });
+
+      setSelectedPhotos(new Set());
+      fetchSeriesList();
+    } catch (err) {
+      console.error('Error creating series from drop:', err);
+    }
+  };
+
   const removePhotoFromSeries = async (photoId) => {
     if (!activeSeries) return;
     try {
@@ -396,7 +512,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     setAnalyzingSeriesItem(true);
     try {
       const context = [activeSeries?.description, seriesContext].filter(Boolean).join('\n');
-      const result = await findPhotoSeries(seriesPhotos, lang, context);
+      const result = await findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series');
       setSeriesAnalysisResult(result);
       // Save analysis to DB
       await supabase
@@ -500,7 +616,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
 
     setAnalyzingSeries(true);
     try {
-      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions);
+      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions, userSettings, 'collection');
       setSeriesRecommendation(recommendation);
     } catch (err) {
       console.error('Error analyzing series:', err);
@@ -822,6 +938,14 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 </select>
               </div>
             )}
+            {onSendToWall && (
+              <button
+                onClick={() => onSendToWall(Array.from(selectedPhotos), photos)}
+                className="send-to-wall-btn"
+              >
+                📐 {lang === 'fr' ? 'Mur' : 'Wall'}
+              </button>
+            )}
             <button 
               onClick={() => setSelectedPhotos(new Set())}
               className="clear-selection-btn"
@@ -846,127 +970,22 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         >
           📥 {lang === 'fr' ? 'Exporter JSON' : 'Export JSON'}
         </button>
-        {selectedCollection?.id && (
-          <button
-            onClick={() => setShowSeriesPanel(!showSeriesPanel)}
-            className={`series-panel-toggle-btn ${showSeriesPanel ? 'active' : ''}`}
-          >
-            📋 {lang === 'fr' ? 'Séries' : 'Series'} {seriesList.length > 0 && `(${seriesList.length})`}
-          </button>
-        )}
+
+        <div className="grid-size-toggle">
+          {[2, 4, 8].map(cols => (
+            <button
+              key={cols}
+              className={`grid-size-btn ${gridColumns === cols ? 'active' : ''}`}
+              onClick={() => setGridColumns(cols)}
+              title={`${cols} ${lang === 'fr' ? 'par ligne' : 'per row'}`}
+            >
+              {cols}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Series Panel */}
-      {showSeriesPanel && selectedCollection?.id && (
-        <div className="series-panel">
-          <div className="series-panel-header">
-            <h3>📋 {lang === 'fr' ? 'Séries de la collection' : 'Collection Series'}</h3>
-          </div>
-
-          {seriesList.length === 0 ? (
-            <p className="series-empty-text">
-              {lang === 'fr'
-                ? 'Aucune série. Sélectionnez des photos puis cliquez "Créer une série".'
-                : 'No series yet. Select photos then click "Create Series".'}
-            </p>
-          ) : (
-            <div className="series-list">
-              {seriesList.map(s => (
-                <div
-                  key={s.id}
-                  className={`series-list-item ${activeSeries?.id === s.id ? 'active' : ''}`}
-                >
-                  <div className="series-list-item-info" onClick={() => viewSeries(s)}>
-                    <span className="series-list-item-name">{s.name}</span>
-                    <span className="series-list-item-count">
-                      {s.photo_count?.[0]?.count || 0} {lang === 'fr' ? 'photos' : 'photos'}
-                    </span>
-                    {s.analysis && <span className="series-analyzed-badge">✓ {lang === 'fr' ? 'Analysée' : 'Analyzed'}</span>}
-                  </div>
-                  <button
-                    className="series-delete-btn"
-                    onClick={(e) => { e.stopPropagation(); deleteSeries(s.id); }}
-                    title={lang === 'fr' ? 'Supprimer la série' : 'Delete series'}
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Active Series Detail */}
-          {activeSeries && (
-            <div className="series-detail">
-              <div className="series-detail-header">
-                <h4>{activeSeries.name}</h4>
-                {activeSeries.description && <p className="series-description">{activeSeries.description}</p>}
-                <textarea
-                  className="series-context-input"
-                  placeholder={lang === 'fr' ? 'Contexte / instructions pour l\'analyse (optionnel)...' : 'Context / analysis instructions (optional)...'}
-                  value={seriesContext}
-                  onChange={(e) => setSeriesContext(e.target.value)}
-                  rows={2}
-                />
-                <div className="series-detail-actions">
-                  <button
-                    onClick={analyzeSeriesItem}
-                    disabled={analyzingSeriesItem || seriesPhotos.length < 2}
-                    className="analyze-series-item-btn"
-                  >
-                    {analyzingSeriesItem
-                      ? (lang === 'fr' ? '⏳ Analyse en cours...' : '⏳ Analyzing...')
-                      : '🎯 ' + (lang === 'fr' ? 'Analyser la série' : 'Analyze Series')}
-                  </button>
-                  <button
-                    onClick={() => { setActiveSeries(null); setSeriesPhotos([]); setSeriesAnalysisResult(null); }}
-                    className="close-series-btn"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              {/* Series photos thumbnails — drag to reorder */}
-              <div className="series-photos-grid">
-                {seriesPhotos.map((photo, idx) => (
-                  <div
-                    key={photo.id}
-                    className={`series-photo-thumb${draggedPhotoIdx === idx ? ' dragging' : ''}${dragOverIdx === idx ? ' drag-over' : ''}`}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={() => handleDrop(idx)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div className="series-photo-drag-handle" title={lang === 'fr' ? 'Glisser pour réordonner' : 'Drag to reorder'}>⠿</div>
-                    <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
-                    <span className="series-photo-name">{photo.photo_name || photo.file_name}</span>
-                    <button
-                      className="series-photo-remove"
-                      onClick={() => removePhotoFromSeries(photo.id)}
-                      title={lang === 'fr' ? 'Retirer de la série' : 'Remove from series'}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Series Analysis Result */}
-              {seriesAnalysisResult && (
-                <div className="series-analysis-result">
-                  <h5>📊 {lang === 'fr' ? 'Analyse de la série' : 'Series Analysis'}</h5>
-                  <div className="recommendation-content markdown-content">
-                    {renderMarkdown(seriesAnalysisResult)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Series Panel - replaced by sidebar below */}
 
       {/* Create Series Dialog */}
       {showCreateSeriesDialog && (
@@ -1105,7 +1124,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         </div>
       )}
 
-      <div className="gallery-grid">
+      <div className={`gallery-with-sidebar ${selectedCollection?.id ? 'has-sidebar' : ''}`}>
+        <div className={`gallery-grid grid-cols-${gridColumns}`}>
         {photos.map((photo) => {
           // Extract appreciation from analysis
           let appreciation = null;
@@ -1124,8 +1144,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           return (
           <div 
             key={photo.id} 
-            className={`gallery-item ${reanalyzingIds.has(photo.id) ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
+            className={`gallery-item ${reanalyzingIds.has(photo.id) ? 'reanalyzing' : ''} ${selectedPhotos.has(photo.id) ? 'selected' : ''} ${galleryDragPhotoId === photo.id ? 'gallery-dragging' : ''}`}
             onClick={() => setSelectedPhoto(photo)}
+            draggable={!!selectedCollection?.id}
+            onDragStart={(e) => selectedCollection?.id && handleGalleryDragStart(e, photo.id)}
+            onDragEnd={handleGalleryDragEnd}
           >
             {/* Selection checkbox */}
             <div 
@@ -1134,6 +1157,11 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             >
               {selectedPhotos.has(photo.id) && '✓'}
             </div>
+            
+            {/* Drag badge for multi-select */}
+            {selectedCollection?.id && selectedPhotos.has(photo.id) && selectedPhotos.size > 1 && (
+              <div className="drag-count-badge">{selectedPhotos.size}</div>
+            )}
             
             {/* Appreciation badge */}
             {appreciation && (
@@ -1179,6 +1207,136 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           </div>
           );
         })}
+        </div>
+
+        {/* Series Sidebar — always visible when in a collection */}
+        {selectedCollection?.id && (
+          <aside className="series-sidebar">
+            <div className="series-sidebar-header">
+              <h3>📋 {lang === 'fr' ? 'Séries' : 'Series'}</h3>
+              <button
+                onClick={() => setShowCreateSeriesDialog(true)}
+                className="series-sidebar-add-btn"
+                title={lang === 'fr' ? 'Créer une série' : 'Create series'}
+              >
+                +
+              </button>
+            </div>
+
+            <p className="series-sidebar-hint">
+              {lang === 'fr'
+                ? '↕ Glissez des photos ici pour les ajouter'
+                : '↕ Drag photos here to add them'}
+            </p>
+
+            {/* Series list with drop zones */}
+            <div className="series-sidebar-list">
+              {seriesList.map(s => (
+                <div
+                  key={s.id}
+                  className={`series-sidebar-item ${activeSeries?.id === s.id ? 'active' : ''} ${dropTargetSeriesId === s.id ? 'drop-target' : ''}`}
+                  onDragOver={(e) => handleSeriesDragOver(e, s.id)}
+                  onDragLeave={handleSeriesDragLeave}
+                  onDrop={(e) => handleSeriesDrop(e, s.id)}
+                >
+                  <div className="series-sidebar-item-info" onClick={() => viewSeries(s)}>
+                    <span className="series-sidebar-item-name">{s.name}</span>
+                    <span className="series-sidebar-item-meta">
+                      {s.photo_count?.[0]?.count || 0} 📷
+                      {s.analysis && <span className="series-analyzed-dot" title={lang === 'fr' ? 'Analysée' : 'Analyzed'}>●</span>}
+                    </span>
+                  </div>
+                  <button
+                    className="series-sidebar-delete-btn"
+                    onClick={(e) => { e.stopPropagation(); deleteSeries(s.id); }}
+                    title={lang === 'fr' ? 'Supprimer' : 'Delete'}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              {/* Drop zone for new series */}
+              <div
+                className={`series-sidebar-new-drop ${dropTargetNewSeries ? 'drop-target' : ''}`}
+                onDragOver={handleNewSeriesDragOver}
+                onDragLeave={handleNewSeriesDragLeave}
+                onDrop={handleNewSeriesDrop}
+              >
+                <span>+ {lang === 'fr' ? 'Nouvelle série' : 'New series'}</span>
+              </div>
+            </div>
+
+            {/* Active Series Detail */}
+            {activeSeries && (
+              <div className="series-sidebar-detail">
+                <div className="series-detail-header">
+                  <h4>{activeSeries.name}</h4>
+                  <button
+                    onClick={() => { setActiveSeries(null); setSeriesPhotos([]); setSeriesAnalysisResult(null); }}
+                    className="close-series-btn"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {activeSeries.description && <p className="series-description">{activeSeries.description}</p>}
+                <textarea
+                  className="series-context-input"
+                  placeholder={lang === 'fr' ? 'Contexte pour l\'analyse...' : 'Analysis context...'}
+                  value={seriesContext}
+                  onChange={(e) => setSeriesContext(e.target.value)}
+                  rows={2}
+                />
+                <button
+                  onClick={analyzeSeriesItem}
+                  disabled={analyzingSeriesItem || seriesPhotos.length < 2}
+                  className="analyze-series-item-btn"
+                >
+                  {analyzingSeriesItem
+                    ? (lang === 'fr' ? '⏳ Analyse...' : '⏳ Analyzing...')
+                    : '🎯 ' + (lang === 'fr' ? 'Analyser' : 'Analyze')}
+                </button>
+
+                {/* Series photos — drag to reorder */}
+                <div className="series-photos-grid">
+                  {seriesPhotos.map((photo, idx) => (
+                    <div
+                      key={photo.id}
+                      className={`series-photo-thumb${draggedPhotoIdx === idx ? ' dragging' : ''}${dragOverIdx === idx ? ' drag-over' : ''}`}
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); handleDragStart(idx); }}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => { e.stopPropagation(); handleDrop(idx); }}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <div className="series-photo-drag-handle" title={lang === 'fr' ? 'Réordonner' : 'Reorder'}>⠿</div>
+                      <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
+                      <span className="series-photo-name">{photo.photo_name || photo.file_name}</span>
+                      <button
+                        className="series-photo-remove"
+                        onClick={() => removePhotoFromSeries(photo.id)}
+                        title={lang === 'fr' ? 'Retirer' : 'Remove'}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Series Analysis Result */}
+                {seriesAnalysisResult && (
+                  <div className="series-analysis-result">
+                    <h5>📊 {lang === 'fr' ? 'Analyse' : 'Analysis'}</h5>
+                    <div className="recommendation-content markdown-content">
+                      {renderMarkdown(seriesAnalysisResult)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
+        )}
       </div>
 
       {selectedPhoto && (() => {

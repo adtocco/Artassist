@@ -3,6 +3,81 @@ import { supabase } from '../lib/supabase';
 import { analyzePhoto } from '../lib/openai';
 import './PhotoUpload.css';
 
+const TARGET_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB
+
+/**
+ * Compress an image file to approximately TARGET_SIZE_BYTES using Canvas.
+ * Returns a new File (JPEG) if the original exceeds the target, otherwise returns the original.
+ */
+async function compressImage(file) {
+  // If already under target, skip
+  if (file.size <= TARGET_SIZE_BYTES) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      let { width, height } = img;
+
+      // Scale down large dimensions — start by fitting within a max dimension
+      const MAX_DIM = 2400;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Binary search for the right JPEG quality to hit ~1 MB
+      let lo = 0.1, hi = 0.92, bestBlob = null;
+
+      const tryQuality = (quality) => {
+        canvas.toBlob((blob) => {
+          if (!blob) { resolve(file); return; }
+
+          if (!bestBlob || Math.abs(blob.size - TARGET_SIZE_BYTES) < Math.abs(bestBlob.size - TARGET_SIZE_BYTES)) {
+            bestBlob = blob;
+          }
+
+          if (Math.abs(blob.size - TARGET_SIZE_BYTES) < TARGET_SIZE_BYTES * 0.1 || (hi - lo) < 0.02) {
+            // Close enough or exhausted search range
+            const compressed = new File([bestBlob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressed);
+            return;
+          }
+
+          if (blob.size > TARGET_SIZE_BYTES) {
+            hi = quality;
+          } else {
+            lo = quality;
+          }
+          tryQuality((lo + hi) / 2);
+        }, 'image/jpeg', quality);
+      };
+
+      tryQuality((lo + hi) / 2);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file); // fallback to original
+    };
+
+    img.src = url;
+  });
+}
+
 const ANALYSIS_TIPS = {
   fr: [
     "L'IA examine la composition de votre photo...",
@@ -116,11 +191,14 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
       const { data: { user } } = await supabase.auth.getUser();
       
       for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
+        const originalFile = selectedFiles[i];
         setAnalysisPhase('uploading');
         setProgress(lang === 'fr' 
-          ? `Téléversement ${i + 1} sur ${selectedFiles.length}...`
-          : `Uploading ${i + 1} of ${selectedFiles.length}...`);
+          ? `Compression & téléversement ${i + 1} sur ${selectedFiles.length}...`
+          : `Compressing & uploading ${i + 1} of ${selectedFiles.length}...`);
+        
+        // Compress image to ~1 MB
+        const file = await compressImage(originalFile);
         
         // Upload to Supabase Storage
         const fileExt = file.name.split('.').pop();

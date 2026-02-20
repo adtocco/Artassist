@@ -7,6 +7,9 @@ import SavedSeries from './components/SavedSeries';
 import SharedSeries from './components/SharedSeries';
 import Collections from './components/Collections';
 import UserSettings from './components/UserSettings';
+import Profile from './components/Profile';
+import WallView from './components/WallView';
+import SharedWall from './components/SharedWall';
 import './App.css';
 
 function App() {
@@ -20,15 +23,25 @@ function App() {
   const [collections, setCollections] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [userSettings, setUserSettings] = useState(null);
+  const [wallInitialPhotos, setWallInitialPhotos] = useState(null);
+  const [galleryPhotos, setGalleryPhotos] = useState([]);
 
   // Check if we're on a share URL
   const path = window.location.pathname;
   const shareMatch = path.match(/^\/share\/([a-f0-9]+)$/);
   const shareToken = shareMatch ? shareMatch[1] : null;
 
+  // Check if we're on a shared wall URL
+  const wallShareMatch = path.match(/^\/wall\/([a-f0-9]+)$/);
+  const wallShareToken = wallShareMatch ? wallShareMatch[1] : null;
+
   // If share URL, show public view without auth
   if (shareToken) {
     return <SharedSeries shareToken={shareToken} />;
+  }
+
+  if (wallShareToken) {
+    return <SharedWall shareToken={wallShareToken} />;
   }
 
   useEffect(() => {
@@ -90,7 +103,10 @@ function App() {
           analysis_detail_level: data.analysis_detail_level || 'balanced',
           analysis_tone: data.analysis_tone || 'professional',
           focus_areas: data.focus_areas || [],
-          language_preference: data.language_preference || 'fr'
+          language_preference: data.language_preference || 'fr',
+          prompt_photo_analysis: data.prompt_photo_analysis || null,
+          prompt_collection_analysis: data.prompt_collection_analysis || null,
+          prompt_series_analysis: data.prompt_series_analysis || null
         });
       }
     } catch (err) {
@@ -175,10 +191,36 @@ function App() {
         >
           📁 {lang === 'fr' ? 'Séries Sauvegardées' : 'Saved Series'}
         </button>
+        <button 
+          className={`nav-tab ${activeTab === 'wall' ? 'active' : ''}`}
+          onClick={() => setActiveTab('wall')}
+        >
+          🖼 {lang === 'fr' ? 'Mur' : 'Wall'}
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+        >
+          👤 {lang === 'fr' ? 'Profil' : 'Profile'}
+        </button>
       </nav>
 
       <main className="app-main">
-        {activeTab === 'gallery' ? (
+        {activeTab === 'profile' ? (
+          <Profile
+            user={session.user}
+            lang={lang}
+            onSettingsUpdate={handleSettingsUpdate}
+          />
+        ) : activeTab === 'wall' ? (
+          <WallView
+            photos={galleryPhotos}
+            initialPhotoIds={wallInitialPhotos}
+            userSession={session}
+            lang={lang}
+            onClearInitial={() => setWallInitialPhotos(null)}
+          />
+        ) : activeTab === 'gallery' ? (
           <div className="gallery-layout">
             <aside className="sidebar">
               <Collections 
@@ -203,6 +245,11 @@ function App() {
                 collections={collections}
                 userSettings={userSettings}
                 onPhotosChanged={() => setCollectionsRefreshTrigger(prev => prev + 1)}
+                onSendToWall={(photoIds, photos) => {
+                  setGalleryPhotos(photos);
+                  setWallInitialPhotos(photoIds);
+                  setActiveTab('wall');
+                }}
               />
             </div>
           </div>

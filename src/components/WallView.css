@@ -1,0 +1,779 @@
+/* ===== Wall List View ===== */
+.wall-list-view {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 30px 20px;
+}
+
+.wall-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.wall-list-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.wall-create-btn {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.wall-create-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.wall-empty {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.wall-empty-icon {
+  font-size: 3em;
+  margin-bottom: 10px;
+}
+
+.wall-empty p {
+  color: #777;
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.wall-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.wall-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.wall-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.wall-card-preview {
+  height: 120px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5em;
+}
+
+.wall-card-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wall-card-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.wall-card-date {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+.wall-card-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.wall-card:hover .wall-card-delete {
+  opacity: 1;
+}
+
+.wall-card-delete:hover {
+  background: #ffe0e0;
+}
+
+/* ===== Wall Container (active wall) ===== */
+.wall-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 160px);
+  background: #e8e8e8;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* ===== Toolbar ===== */
+.wall-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.wall-toolbar-left,
+.wall-toolbar-center,
+.wall-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wall-toolbar-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.wall-toolbar-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.wall-back-btn {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.wall-back-btn:hover {
+  background: #e0e0e0;
+}
+
+.wall-name {
+  margin: 0;
+  font-size: 1rem;
+  color: #333;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.wall-name:hover {
+  background: #f0f0f0;
+}
+
+.wall-name-input {
+  padding: 4px 8px;
+  border: 2px solid #667eea;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 180px;
+  outline: none;
+}
+
+.wall-zoom-btn {
+  width: 30px;
+  height: 30px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.wall-zoom-btn:hover {
+  background: #e0e0e0;
+}
+
+.wall-zoom-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #555;
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wall-delete-item-btn {
+  padding: 6px 12px;
+  background: #ffe0e0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #c0392b;
+  transition: background 0.2s;
+}
+
+.wall-delete-item-btn:hover {
+  background: #ffc8c8;
+}
+
+.wall-delete-wall-btn {
+  padding: 6px 12px;
+  background: #c0392b;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: white;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.wall-delete-wall-btn:hover {
+  background: #a93226;
+  transform: translateY(-1px);
+}
+
+.wall-item-count {
+  font-size: 0.85rem;
+  color: #999;
+  white-space: nowrap;
+}
+
+/* ===== Viewport & Canvas ===== */
+.wall-viewport {
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+  touch-action: none;
+}
+
+.wall-viewport:active {
+  cursor: grabbing;
+}
+
+.wall-canvas {
+  position: relative;
+  background-color: #f5f5f5;
+  background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
+  background-size: 40px 40px;
+  will-change: transform;
+}
+
+/* ===== Wall Items ===== */
+.wall-item {
+  position: absolute;
+  cursor: grab;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 4px solid white;
+  border-radius: 2px;
+  overflow: visible;
+  transition: box-shadow 0.15s;
+  touch-action: none;
+  user-select: none;
+}
+
+.wall-item:hover {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.wall-item:active {
+  cursor: grabbing;
+}
+
+.wall-item.selected {
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.5), 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.wall-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ===== Resize Handles ===== */
+.wall-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border: 2px solid #4a90d9;
+  border-radius: 50%;
+  z-index: 10;
+  touch-action: none;
+}
+
+.handle-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.handle-ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.handle-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+.handle-se {
+  bottom: -7px;
+  right: -7px;
+  cursor: nwse-resize;
+}
+
+/* ===== Help Hint ===== */
+.wall-hint {
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  font-size: 0.75rem;
+  color: #999;
+  border-top: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .wall-toolbar {
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .wall-toolbar-left,
+  .wall-toolbar-right {
+    flex: auto;
+  }
+
+  .wall-name {
+    max-width: 120px;
+    font-size: 0.9rem;
+  }
+
+  .wall-container {
+    height: calc(100vh - 140px);
+    border-radius: 0;
+  }
+
+  .wall-hint {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+  }
+}
+
+/* ===== Create Wall Dialog ===== */
+.wall-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.wall-dialog {
+  background: white;
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wall-dialog h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.wall-dialog-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+}
+
+.wall-dialog-input {
+  padding: 10px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.wall-dialog-input:focus {
+  border-color: #667eea;
+}
+
+.wall-dialog-hint {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0;
+  font-style: italic;
+}
+
+.wall-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wall-dialog-cancel {
+  padding: 8px 18px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.wall-dialog-cancel:hover {
+  background: #e0e0e0;
+}
+
+.wall-dialog-confirm {
+  padding: 8px 22px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.wall-dialog-confirm:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* ===== Share UI ===== */
+.wall-share-btn {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.wall-share-btn:hover {
+  background: #e0e0e0;
+}
+
+.wall-share-btn.shared {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.wall-share-btn.shared:hover {
+  background: #c8e6c9;
+}
+
+.wall-copy-link-btn {
+  padding: 6px 12px;
+  background: #e3f2fd;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #1565c0;
+  transition: background 0.2s;
+}
+
+.wall-copy-link-btn:hover {
+  background: #bbdefb;
+}
+
+.wall-toolbar-sep {
+  color: #ddd;
+  font-size: 1rem;
+}
+
+.wall-shared-badge {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+/* ===== Add photos button ===== */
+.wall-add-photos-btn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.wall-add-photos-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
+}
+
+/* ===== Photo Picker Modal ===== */
+.wall-picker-modal {
+  background: white;
+  border-radius: 16px;
+  width: 700px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.wall-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.wall-picker-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.15rem;
+}
+
+.wall-picker-close {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #999;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.wall-picker-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.wall-picker-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.wall-picker-filter select {
+  padding: 8px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+  flex: 1;
+  max-width: 300px;
+  transition: border-color 0.2s;
+}
+
+.wall-picker-filter select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.wall-picker-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #667eea;
+  white-space: nowrap;
+}
+
+.wall-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 16px 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.wall-picker-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.wall-picker-item:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.wall-picker-item.selected {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
+
+.wall-picker-item.on-wall {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wall-picker-item.on-wall:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.wall-picker-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wall-picker-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  background: #667eea;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.wall-picker-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wall-picker-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: white;
+  padding: 14px 6px 5px;
+  font-size: 0.65rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wall-picker-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 30px 0;
+}
+
+.wall-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid #eee;
+}
+
+.wall-picker-actions .wall-dialog-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 600px) {
+  .wall-picker-modal {
+    max-height: 95vh;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .wall-picker-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 6px;
+    padding: 10px 14px;
+  }
+}
