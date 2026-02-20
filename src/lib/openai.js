@@ -722,16 +722,16 @@ Rules:
       const systemPrompt = `${basePrompt}${styleModifiers}\n\n${namingInstruction}\n\n${jsonInstruction}\n\n${languageNote}`;
       const userMessage = `${instructionNote}\n\nAnalyses des photos de la collection:\n${analysisTexts}`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
+      const response = await anthropic.messages.create({
+        model: "claude-opus-4-6",
+        max_tokens: 4096,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
         ],
-        max_completion_tokens: 4096
       });
 
-      const content = response.choices[0].message.content;
+      const content = response.content[0].text;
       // Try to parse as JSON, fall back to raw text
       try {
         const cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
@@ -750,16 +750,16 @@ Rules:
     const systemPrompt = `${basePrompt}${styleModifiers}\n\n${namingInstruction}\n\n${markdownInstruction}\n\n${languageNote}`;
     const userMessage = `${instructionNote}\n\nSur la base des analyses ci-dessous, merci d'identifier :\n1. Quelles photos fonctionneraient bien ensemble en série (groupes de 2 à 5 photos) - INCLURE les aperçus des photos en Markdown pour chaque série\n2. Quelles photos individuelles sont les plus intéressantes ou puissantes - INCLURE l'aperçu\n3. Recommandations pour organiser ou présenter cette collection\n\nAnalyses:\n${analysisTexts}\n\nVeuillez fournir une sortie structurée avec des recommandations claires. Référencez chaque photo par son nom et incluez les images en Markdown.`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 4096,
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }
       ],
-      max_completion_tokens: 4096
     });
 
-    return response.choices[0].message.content;
+    return response.content[0].text;
   } catch (error) {
     console.error('Error finding photo series:', error);
     throw error;
@@ -829,16 +829,16 @@ export async function analyzeWall(wallData, lang = 'fr', instructions = '', user
     const systemPrompt = `${basePrompt}${modifiers}\n\n${markdownInstruction}\n\n${languageNote}`;
     const userMessage = `${instructionNote}\n\n${wallDescription}`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-5.2",
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 3000,
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }
       ],
-      max_completion_tokens: 1500
     });
 
-    return response.choices[0].message.content;
+    return response.content[0].text;
   } catch (error) {
     console.error('Error analyzing wall:', error);
     throw error;

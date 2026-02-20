@@ -994,8 +994,21 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
             const cpp = getCmPerPixel();
             const physW = item.width * cpp;
             const physH = h * cpp;
-            const distTop = item.pos_y * cpp;
-            const distBottom = (canvasH - item.pos_y - h) * cpp;
+
+            // Calculate extra pixels added by mat (border) and frame (outline)
+            const matPx = (item.frame_width_cm > 0 && item.mat_width_cm > 0) ? item.mat_width_cm * PX_PER_CM : 0;
+            const framePx = (item.frame_width_cm > 0 && item.mat_width_cm > 0) ? item.frame_width_cm * PX_PER_CM
+              : (item.frame_width_cm > 0) ? item.frame_width_cm * PX_PER_CM : 0;
+            // Total extra on each side: mat is border (adds to box), frame is outline when mat present (doesn't add to box)
+            // When no mat: frame is border (adds to box)
+            const borderExtra = matPx > 0 ? matPx : (item.frame_width_cm > 0 ? framePx : 0);
+            const totalExtraTop = borderExtra; // border adds on top
+            const totalExtraBottom = borderExtra; // border adds on bottom
+
+            const distTop = (item.pos_y - totalExtraTop) * cpp;
+            const distBottom = (canvasH - item.pos_y - h - totalExtraBottom) * cpp;
+            const rulerTopHeight = item.pos_y - totalExtraTop;
+            const rulerBottomHeight = canvasH - item.pos_y - h - totalExtraBottom;
 
             return (
               <div
@@ -1035,18 +1048,18 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
                     <div className="wall-item-dims">
                       {formatDim(physW)} × {formatDim(physH)}
                     </div>
-                    {/* Ruler: top of wall → top of photo */}
-                    {item.pos_y > 5 && (
-                      <div className="wall-ruler wall-ruler-top" style={{ height: item.pos_y, bottom: '100%', left: '50%' }}>
+                    {/* Ruler: top of wall → top of frame/mat */}
+                    {rulerTopHeight > 5 && (
+                      <div className="wall-ruler wall-ruler-top" style={{ height: rulerTopHeight, bottom: '100%', left: '50%' }}>
                         <div className="wall-ruler-line"></div>
                         <div className="wall-ruler-tick wall-ruler-tick-start"></div>
                         <div className="wall-ruler-tick wall-ruler-tick-end"></div>
                         <span className="wall-ruler-label">{formatDim(distTop)}</span>
                       </div>
                     )}
-                    {/* Ruler: bottom of photo → bottom of wall */}
-                    {(canvasH - item.pos_y - h) > 5 && (
-                      <div className="wall-ruler wall-ruler-bottom" style={{ height: canvasH - item.pos_y - h, top: '100%', left: '50%' }}>
+                    {/* Ruler: bottom of frame/mat → bottom of wall */}
+                    {rulerBottomHeight > 5 && (
+                      <div className="wall-ruler wall-ruler-bottom" style={{ height: rulerBottomHeight, top: '100%', left: '50%' }}>
                         <div className="wall-ruler-line"></div>
                         <div className="wall-ruler-tick wall-ruler-tick-start"></div>
                         <div className="wall-ruler-tick wall-ruler-tick-end"></div>

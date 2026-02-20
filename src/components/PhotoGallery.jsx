@@ -1195,7 +1195,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         {selectedCollection?.id && (
           <>
             <button 
-              onClick={openAnalysisOptions}
+              onClick={() => openAnalysisOptions('collection')}
               disabled={analyzingSeries || photos.length < 2}
               className="analyze-series-button"
             >
