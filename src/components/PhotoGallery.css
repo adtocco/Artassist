@@ -239,6 +239,24 @@
   margin: 0 0 10px 0;
 }
 
+.series-context-input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  resize: vertical;
+  margin-bottom: 10px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.series-context-input:focus {
+  outline: none;
+  border-color: #f093fb;
+}
+
 .series-detail-actions {
   display: flex;
   gap: 10px;
@@ -295,7 +313,47 @@
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 1;
-  cursor: pointer;
+  cursor: grab;
+  transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+  border: 2px solid transparent;
+}
+
+.series-photo-thumb:active {
+  cursor: grabbing;
+}
+
+.series-photo-thumb.dragging {
+  opacity: 0.4;
+  transform: scale(0.95);
+}
+
+.series-photo-thumb.drag-over {
+  border-color: #f5576c;
+  box-shadow: 0 0 12px rgba(245, 87, 108, 0.4);
+  transform: scale(1.03);
+}
+
+.series-photo-drag-handle {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0,0,0,0.45);
+  color: white;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+}
+
+.series-photo-thumb:hover .series-photo-drag-handle {
+  opacity: 1;
 }
 
 .series-photo-thumb img {

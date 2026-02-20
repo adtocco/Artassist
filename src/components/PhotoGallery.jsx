@@ -89,6 +89,9 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [analyzingSeriesItem, setAnalyzingSeriesItem] = useState(false);
   const [seriesAnalysisResult, setSeriesAnalysisResult] = useState(null);
   const [showSeriesPanel, setShowSeriesPanel] = useState(false);
+  const [seriesContext, setSeriesContext] = useState('');
+  const [draggedPhotoIdx, setDraggedPhotoIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
 
   // Keyboard navigation for modal
   useEffect(() => {
@@ -286,14 +289,64 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         .from('series_photos')
         .select(`
           id,
+          position,
           photo:photo_analyses(*)
         `)
-        .eq('series_id', series.id);
+        .eq('series_id', series.id)
+        .order('position', { ascending: true });
       if (error) throw error;
-      setSeriesPhotos((data || []).map(sp => sp.photo));
+      setSeriesPhotos((data || []).map(sp => ({ ...sp.photo, _series_photo_id: sp.id })));
     } catch (err) {
       console.error('Error fetching series photos:', err);
     }
+  };
+
+  // Drag & Drop handlers for series photo reordering
+  const handleDragStart = (idx) => {
+    setDraggedPhotoIdx(idx);
+  };
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault();
+    if (dragOverIdx !== idx) setDragOverIdx(idx);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIdx(null);
+  };
+
+  const handleDrop = async (targetIdx) => {
+    if (draggedPhotoIdx === null || draggedPhotoIdx === targetIdx) {
+      setDraggedPhotoIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    // Reorder locally
+    const reordered = [...seriesPhotos];
+    const [moved] = reordered.splice(draggedPhotoIdx, 1);
+    reordered.splice(targetIdx, 0, moved);
+    setSeriesPhotos(reordered);
+    setDraggedPhotoIdx(null);
+    setDragOverIdx(null);
+
+    // Persist new positions to DB
+    try {
+      const updates = reordered.map((photo, i) => 
+        supabase
+          .from('series_photos')
+          .update({ position: i })
+          .eq('series_id', activeSeries.id)
+          .eq('photo_id', photo.id)
+      );
+      await Promise.all(updates);
+    } catch (err) {
+      console.error('Error saving photo order:', err);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPhotoIdx(null);
+    setDragOverIdx(null);
   };
 
   const removePhotoFromSeries = async (photoId) => {
@@ -342,7 +395,8 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
     setAnalyzingSeriesItem(true);
     try {
-      const result = await findPhotoSeries(seriesPhotos, lang, activeSeries?.description || '');
+      const context = [activeSeries?.description, seriesContext].filter(Boolean).join('\n');
+      const result = await findPhotoSeries(seriesPhotos, lang, context);
       setSeriesAnalysisResult(result);
       // Save analysis to DB
       await supabase
@@ -847,6 +901,13 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
               <div className="series-detail-header">
                 <h4>{activeSeries.name}</h4>
                 {activeSeries.description && <p className="series-description">{activeSeries.description}</p>}
+                <textarea
+                  className="series-context-input"
+                  placeholder={lang === 'fr' ? 'Contexte / instructions pour l\'analyse (optionnel)...' : 'Context / analysis instructions (optional)...'}
+                  value={seriesContext}
+                  onChange={(e) => setSeriesContext(e.target.value)}
+                  rows={2}
+                />
                 <div className="series-detail-actions">
                   <button
                     onClick={analyzeSeriesItem}
@@ -866,10 +927,20 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 </div>
               </div>
 
-              {/* Series photos thumbnails */}
+              {/* Series photos thumbnails — drag to reorder */}
               <div className="series-photos-grid">
-                {seriesPhotos.map(photo => (
-                  <div key={photo.id} className="series-photo-thumb">
+                {seriesPhotos.map((photo, idx) => (
+                  <div
+                    key={photo.id}
+                    className={`series-photo-thumb${draggedPhotoIdx === idx ? ' dragging' : ''}${dragOverIdx === idx ? ' drag-over' : ''}`}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={() => handleDrop(idx)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <div className="series-photo-drag-handle" title={lang === 'fr' ? 'Glisser pour réordonner' : 'Drag to reorder'}>⠿</div>
                     <img src={photo.photo_url} alt={photo.photo_name || photo.file_name} />
                     <span className="series-photo-name">{photo.photo_name || photo.file_name}</span>
                     <button
