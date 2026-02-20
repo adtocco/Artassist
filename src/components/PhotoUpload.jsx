@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { analyzePhoto } from '../lib/openai';
+import { useAnalysisQueue } from './AnalysisQueue';
 import './PhotoUpload.css';
 
 const TARGET_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB
@@ -110,28 +111,14 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
-  const [analysisPhase, setAnalysisPhase] = useState(null); // 'uploading' | 'analyzing' | 'done' | null
-  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const [analysisPhase, setAnalysisPhase] = useState(null); // 'uploading' | 'done' | null
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef(null);
-  const tipIntervalRef = useRef(null);
+  const { enqueue } = useAnalysisQueue();
 
-  // Rotate tips during analysis
+  // Elapsed time counter during upload
   useEffect(() => {
-    if (analysisPhase === 'analyzing') {
-      setCurrentTipIndex(0);
-      tipIntervalRef.current = setInterval(() => {
-        setCurrentTipIndex(prev => (prev + 1) % ANALYSIS_TIPS[lang].length);
-      }, 3000);
-    } else {
-      if (tipIntervalRef.current) clearInterval(tipIntervalRef.current);
-    }
-    return () => { if (tipIntervalRef.current) clearInterval(tipIntervalRef.current); };
-  }, [analysisPhase, lang]);
-
-  // Elapsed time counter
-  useEffect(() => {
-    if (analysisPhase === 'uploading' || analysisPhase === 'analyzing') {
+    if (analysisPhase === 'uploading') {
       setElapsedSeconds(0);
       timerRef.current = setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
@@ -215,42 +202,16 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
           .from('photos')
           .getPublicUrl(fileName);
 
-        let analysisResult = null;
-        
-        // Only analyze if a collection is selected
-        if (hasValidCollection) {
-          // Try to create a short-lived signed URL so external services can reliably download the image
-          const { data: signedData } = await supabase.storage
-            .from('photos')
-            .createSignedUrl(fileName, 60);
-
-          const urlToAnalyze = signedData?.signedUrl || publicUrl;
-
-          setAnalysisPhase('analyzing');
-          setProgress(lang === 'fr' 
-            ? `Analyse ${i + 1} sur ${selectedFiles.length}...`
-            : `Analyzing ${i + 1} of ${selectedFiles.length}...`);
-
-          // Prepare collection analysis options
-          const collectionAnalysis = {
-            type: selectedCollection.analysis_type || 'artist',
-            instructions: selectedCollection.analysis_instructions
-          };
-
-          // Analyze with OpenAI
-          analysisResult = await analyzePhoto(urlToAnalyze, 'artist', lang, collectionAnalysis, userSettings);
-        }
-
-        // Save photo to database
+        // Save photo to database (without analysis — analysis runs in background)
         const { data: dbData, error: dbError } = await supabase
           .from('photo_analyses')
           .insert({
             user_id: user.id,
             photo_url: publicUrl,
             storage_path: fileName,
-            analysis: analysisResult?.analysis || null,
-            photo_name: analysisResult?.name || file.name.replace(/\.[^/.]+$/, ''), // Use filename without extension if no analysis
-            prompt_type: 'artist', // Always use 'artist' as prompt_type
+            analysis: null,
+            photo_name: file.name.replace(/\.[^/.]+$/, ''),
+            prompt_type: 'artist',
             file_name: file.name,
             analysis_detail_level: userSettings?.analysis_detail_level || null,
             analysis_tone: userSettings?.analysis_tone || null,
@@ -261,14 +222,14 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
 
         if (dbError) throw dbError;
 
-        // If uploading to a specific collection, also create collection_photos entry
+        // If uploading to a specific collection, create collection_photos entry (without analysis)
         if (hasValidCollection) {
           const { error: collectionPhotoError } = await supabase
             .from('collection_photos')
             .insert({
               collection_id: selectedCollection.id,
               photo_id: dbData.id,
-              analysis: analysisResult?.analysis || null,
+              analysis: null,
               analysis_type: selectedCollection.analysis_type,
               analysis_detail_level: userSettings?.analysis_detail_level || null,
               analysis_tone: userSettings?.analysis_tone || null,
@@ -280,14 +241,64 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
           }
         }
 
-        results.push(dbData);
+        results.push({ ...dbData, storagePath: fileName });
       }
 
+      // Show done overlay briefly
       setAnalysisPhase('done');
-      setProgress(lang === 'fr' ? 'Terminé !' : 'Complete!');
+      setProgress(lang === 'fr'
+        ? hasValidCollection
+          ? `Téléversé ! Analyse de ${results.length} photo(s) en arrière-plan…`
+          : 'Terminé !'
+        : hasValidCollection
+          ? `Uploaded! Analyzing ${results.length} photo(s) in background…`
+          : 'Complete!');
       setSelectedFiles([]);
       if (onPhotoAnalyzed) {
         onPhotoAnalyzed(results);
+      }
+
+      // Enqueue background analysis for each photo if a collection is selected
+      if (hasValidCollection) {
+        const collectionId = selectedCollection.id;
+        const collectionAnalysisType = selectedCollection.analysis_type || 'artist';
+        const collectionInstructions = selectedCollection.analysis_instructions;
+        const settings = { ...userSettings };
+
+        for (const photo of results) {
+          enqueue({
+            type: 'photo',
+            title: photo.photo_name || photo.file_name || 'Photo',
+            execute: async () => {
+              const { data: signedData } = await supabase.storage
+                .from('photos')
+                .createSignedUrl(photo.storagePath || photo.storage_path, 120);
+              const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
+              const collectionAnalysis = { type: collectionAnalysisType, instructions: collectionInstructions };
+              return await analyzePhoto(urlToAnalyze, 'artist', lang, collectionAnalysis, settings);
+            },
+            onComplete: async (analysisResult) => {
+              // Update photo_analyses with result
+              await supabase.from('photo_analyses').update({
+                analysis: analysisResult.analysis,
+                photo_name: analysisResult.name || photo.photo_name,
+                analysis_detail_level: settings?.analysis_detail_level || null,
+                analysis_tone: settings?.analysis_tone || null,
+                analysis_focus_areas: settings?.focus_areas || []
+              }).eq('id', photo.id);
+              // Update collection_photos with result
+              await supabase.from('collection_photos').update({
+                analysis: analysisResult.analysis,
+                analysis_type: collectionAnalysisType,
+                analysis_detail_level: settings?.analysis_detail_level || null,
+                analysis_tone: settings?.analysis_tone || null,
+                analysis_focus_areas: settings?.focus_areas || []
+              }).eq('photo_id', photo.id).eq('collection_id', collectionId);
+              // Trigger refresh
+              if (onPhotoAnalyzed) onPhotoAnalyzed();
+            },
+          });
+        }
       }
       
       // Reset form
@@ -298,7 +309,7 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
       
     } catch (err) {
       console.error('Error:', err);
-      setError(err.message || 'An error occurred during upload or analysis');
+      setError(err.message || 'An error occurred during upload');
     } finally {
       setUploading(false);
       if (error) {
@@ -361,9 +372,9 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
 
         {selectedFiles.length > 5 && hasValidCollection && (
           <div className="upload-warning">
-            ⚠️ {lang === 'fr'
-              ? `L'analyse de ${selectedFiles.length} photos peut prendre plus de 10 minutes. Veuillez patienter sans fermer la page.`
-              : `Analyzing ${selectedFiles.length} photos may take over 10 minutes. Please wait without closing the page.`}
+            ℹ️ {lang === 'fr'
+              ? `Les ${selectedFiles.length} photos seront analysées en arrière-plan après le téléversement. Vous pourrez continuer à utiliser l'application.`
+              : `The ${selectedFiles.length} photos will be analyzed in the background after upload. You can continue using the app.`}
           </div>
         )}
 
@@ -398,37 +409,6 @@ export default function PhotoUpload({ onPhotoAnalyzed, lang = 'fr', selectedColl
                 <div className="progress-bar-container">
                   <div className="progress-bar-fill uploading" />
                 </div>
-              </>
-            )}
-
-            {analysisPhase === 'analyzing' && (
-              <>
-                <div className="analyzing-animation">
-                  <div className="eye-icon">
-                    <svg viewBox="0 0 64 64" fill="none">
-                      <ellipse className="eye-shape" cx="32" cy="32" rx="28" ry="18" stroke="url(#eyeGrad)" strokeWidth="3" />
-                      <circle className="eye-pupil" cx="32" cy="32" r="8" fill="url(#eyeGrad)" />
-                      <circle className="eye-glint" cx="36" cy="28" r="2.5" fill="white" />
-                      <defs>
-                        <linearGradient id="eyeGrad" x1="0" y1="0" x2="64" y2="64">
-                          <stop offset="0%" stopColor="#667eea" />
-                          <stop offset="100%" stopColor="#764ba2" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                  </div>
-                  <div className="scan-line" />
-                </div>
-                <p className="analysis-status-text">{progress}</p>
-                <p className="analysis-tip" key={currentTipIndex}>
-                  {ANALYSIS_TIPS[lang][currentTipIndex]}
-                </p>
-                <div className="progress-bar-container">
-                  <div className="progress-bar-fill analyzing" />
-                </div>
-                <span className="elapsed-time">
-                  {elapsedSeconds}s
-                </span>
               </>
             )}
 

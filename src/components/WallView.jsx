@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { analyzeWall, PROMPT_PRESETS } from '../lib/openai';
+import { useAnalysisQueue } from './AnalysisQueue';
 import './WallView.css';
 
 const PX_PER_CM = 5;
@@ -8,6 +9,7 @@ const DEFAULT_W = 300;
 const MIN_W = 60;
 
 export default function WallView({ photos, initialPhotoIds, userSession, lang = 'fr', userSettings, onClearInitial }) {
+  const { enqueue } = useAnalysisQueue();
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const interactionRef = useRef(null);
@@ -416,7 +418,7 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     setShowWallAnalysisOptions(true);
   }
 
-  async function runWallAnalysis() {
+  function runWallAnalysis() {
     setShowWallAnalysisOptions(false);
     if (items.length === 0) return;
 
@@ -466,16 +468,20 @@ export default function WallView({ photos, initialPhotoIds, userSession, lang = 
     };
 
     setAnalyzingWall(true);
-    try {
-      const result = await analyzeWall(wallData, lang, wallAnalysisInstructions, overriddenSettings);
-      setWallAnalysisResult(result);
-      setShowWallAnalysis(true);
-    } catch (err) {
-      console.error('Error analyzing wall:', err);
-      alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
-    } finally {
-      setAnalyzingWall(false);
-    }
+
+    enqueue({
+      type: 'wall',
+      title: activeWall?.name || (lang === 'fr' ? 'Mur' : 'Wall'),
+      execute: () => analyzeWall(wallData, lang, wallAnalysisInstructions, overriddenSettings),
+      onComplete: (result) => {
+        setWallAnalysisResult(result);
+        setShowWallAnalysis(true);
+        setAnalyzingWall(false);
+      },
+      onError: () => {
+        setAnalyzingWall(false);
+      },
+    });
   }
 
   // Simple markdown to HTML renderer

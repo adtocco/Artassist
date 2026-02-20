@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { analyzePhoto } from '../lib/openai';
+import { useAnalysisQueue } from './AnalysisQueue';
 import './Collections.css';
 
 const ANALYSIS_TYPES = [
@@ -10,6 +11,7 @@ const ANALYSIS_TYPES = [
 ];
 
 export default function Collections({ lang = 'fr', onSelectCollection, onRefresh, refreshTrigger = 0, userSettings = null }) {
+  const { enqueue } = useAnalysisQueue();
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -221,70 +223,27 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
   };
 
   const addPhotosToCollection = async () => {
-    console.log('addPhotosToCollection called', { selectedPhotoIds: selectedPhotoIds.size, showAddPhotosDialog });
-    
-    if (selectedPhotoIds.size === 0 || !showAddPhotosDialog) {
-      console.log('Early return - no photos selected or no dialog');
-      return;
-    }
+    if (selectedPhotoIds.size === 0 || !showAddPhotosDialog) return;
     
     const collection = showAddPhotosDialog;
     setAddingPhotos(true);
     setAddProgress(lang === 'fr' ? 'Ajout en cours...' : 'Adding...');
     
     try {
-      // Get selected photos data for analysis
       const selectedPhotosData = availablePhotos.filter(p => selectedPhotoIds.has(p.id));
-      console.log('Selected photos data:', selectedPhotosData);
+      const needsAnalysis = collection.analysis_type && collection.analysis_type !== 'general';
       
+      // Step 1: Add all photos to collection immediately (fast DB inserts)
       for (let i = 0; i < selectedPhotosData.length; i++) {
         const photo = selectedPhotosData[i];
         setAddProgress(`${lang === 'fr' ? 'Ajout' : 'Adding'} ${i + 1}/${selectedPhotosData.length}...`);
-        
-        let analysis = null;
-        
-        // If collection has a specific analysis type, run analysis
-        if (collection.analysis_type && collection.analysis_type !== 'general') {
-          try {
-            const collectionAnalysis = {
-              type: collection.analysis_type,
-              instructions: collection.analysis_instructions
-            };
-            
-            const analysisResult = await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis, userSettings);
-            analysis = analysisResult.analysis;
-            
-            // Update photo_name in photo_analyses table with the new name from analysis
-            if (analysisResult.name) {
-              const { error: updateError } = await supabase
-                .from('photo_analyses')
-                .update({
-                  photo_name: analysisResult.name,
-                  analysis: analysisResult.analysis,
-                  analysis_detail_level: userSettings?.analysis_detail_level || null,
-                  analysis_tone: userSettings?.analysis_tone || null,
-                  analysis_focus_areas: userSettings?.focus_areas || []
-                })
-                .eq('id', photo.id);
-              
-              if (updateError) {
-                console.error('Error updating photo name:', updateError);
-              }
-            }
-          } catch (analysisErr) {
-            console.error('Error analyzing photo for collection:', analysisErr);
-            // Continue without analysis if it fails
-          }
-        }
-        
-        // Insert into collection_photos junction table
-        console.log('Inserting into collection_photos:', { collection_id: collection.id, photo_id: photo.id });
+
         const { error } = await supabase
           .from('collection_photos')
           .insert({
             collection_id: collection.id,
             photo_id: photo.id,
-            analysis: analysis,
+            analysis: null,
             analysis_type: collection.analysis_type,
             analysis_detail_level: userSettings?.analysis_detail_level || null,
             analysis_tone: userSettings?.analysis_tone || null,
@@ -301,8 +260,45 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
       setSelectedPhotoIds(new Set());
       setAvailablePhotos([]);
       setAddProgress('');
-      fetchCollections(); // Refresh to update photo counts
-      onRefresh?.(); // Refresh gallery
+      fetchCollections();
+      onRefresh?.();
+
+      // Step 2: Enqueue background analysis for each photo if needed
+      if (needsAnalysis) {
+        const collectionId = collection.id;
+        const collectionAnalysisType = collection.analysis_type;
+        const collectionInstructions = collection.analysis_instructions;
+        const settings = { ...userSettings };
+
+        for (const photo of selectedPhotosData) {
+          enqueue({
+            type: 'photo',
+            title: photo.photo_name || photo.file_name || 'Photo',
+            execute: async () => {
+              const collectionAnalysis = { type: collectionAnalysisType, instructions: collectionInstructions };
+              return await analyzePhoto(photo.photo_url, 'artist', lang, collectionAnalysis, settings);
+            },
+            onComplete: async (analysisResult) => {
+              // Update photo_analyses
+              if (analysisResult.name) {
+                await supabase.from('photo_analyses').update({
+                  photo_name: analysisResult.name,
+                  analysis: analysisResult.analysis,
+                  analysis_detail_level: settings?.analysis_detail_level || null,
+                  analysis_tone: settings?.analysis_tone || null,
+                  analysis_focus_areas: settings?.focus_areas || []
+                }).eq('id', photo.id);
+              }
+              // Update collection_photos
+              await supabase.from('collection_photos').update({
+                analysis: analysisResult.analysis,
+              }).eq('collection_id', collectionId).eq('photo_id', photo.id);
+              // Refresh
+              onRefresh?.();
+            },
+          });
+        }
+      }
     } catch (err) {
       console.error('Error adding photos to collection:', err);
       alert(lang === 'fr' ? `Erreur: ${err.message || err}` : `Error: ${err.message || err}`);
@@ -311,7 +307,6 @@ export default function Collections({ lang = 'fr', onSelectCollection, onRefresh
       setAddProgress('');
     }
   };
-
   const handleSelectCollection = (collection) => {
     const newSelection = selectedCollection?.id === collection?.id ? null : collection;
     setSelectedCollection(newSelection);

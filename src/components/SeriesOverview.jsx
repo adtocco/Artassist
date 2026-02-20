@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { findPhotoSeries } from '../lib/openai';
+import { useAnalysisQueue } from './AnalysisQueue';
 import './SeriesOverview.css';
 
 // Simple Markdown renderer
@@ -34,6 +35,7 @@ function renderMarkdown(text) {
 }
 
 export default function SeriesOverview({ lang = 'fr', onSendToWall = null, userSettings = null }) {
+  const { enqueue } = useAnalysisQueue();
   const [seriesByCollection, setSeriesByCollection] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSeries, setSelectedSeries] = useState(null);
@@ -86,35 +88,40 @@ export default function SeriesOverview({ lang = 'fr', onSendToWall = null, userS
     }
   };
 
-  const analyzeSeries = async () => {
+  const analyzeSeries = () => {
     if (seriesPhotos.length < 2) {
       alert(lang === 'fr' ? 'Il faut au moins 2 photos pour analyser une série' : 'You need at least 2 photos to analyze a series');
       return;
     }
     setAnalyzing(true);
-    try {
-      const context = [selectedSeries?.description, seriesContext].filter(Boolean).join('\n');
-      const result = await findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series');
-      setAnalysisResult(result);
-      // Save analysis to DB
-      await supabase
-        .from('collection_series')
-        .update({ analysis: result, updated_at: new Date().toISOString() })
-        .eq('id', selectedSeries.id);
-      // Update local state
-      setSelectedSeries(prev => ({ ...prev, analysis: result }));
-      setSeriesByCollection(prev =>
-        prev.map(g => ({
-          ...g,
-          series: g.series.map(s => s.id === selectedSeries.id ? { ...s, analysis: result } : s)
-        }))
-      );
-    } catch (err) {
-      console.error('Error analyzing series:', err);
-      alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
-    } finally {
-      setAnalyzing(false);
-    }
+    const seriesId = selectedSeries?.id;
+    const context = [selectedSeries?.description, seriesContext].filter(Boolean).join('\n');
+
+    enqueue({
+      type: 'series',
+      title: selectedSeries?.name || (lang === 'fr' ? 'Série' : 'Series'),
+      execute: () => findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series'),
+      onComplete: async (result) => {
+        setAnalysisResult(result);
+        setAnalyzing(false);
+        // Save analysis to DB
+        await supabase
+          .from('collection_series')
+          .update({ analysis: result, updated_at: new Date().toISOString() })
+          .eq('id', seriesId);
+        // Update local state
+        setSelectedSeries(prev => prev?.id === seriesId ? { ...prev, analysis: result } : prev);
+        setSeriesByCollection(prev =>
+          prev.map(g => ({
+            ...g,
+            series: g.series.map(s => s.id === seriesId ? { ...s, analysis: result } : s)
+          }))
+        );
+      },
+      onError: () => {
+        setAnalyzing(false);
+      },
+    });
   };
 
   const openSeries = async (series) => {

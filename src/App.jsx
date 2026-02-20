@@ -11,6 +11,7 @@ import Profile from './components/Profile';
 import WallView from './components/WallView';
 import SharedWall from './components/SharedWall';
 import SeriesOverview from './components/SeriesOverview';
+import { AnalysisQueueProvider } from './components/AnalysisQueue';
 import './App.css';
 
 function App() {
@@ -149,6 +150,7 @@ function App() {
   }
 
   return (
+    <AnalysisQueueProvider lang={lang}>
     <div className="app">
       <header className="app-header">
         <div className="header-content">
@@ -311,6 +313,7 @@ function App() {
         <p>AI-Powered Artistic Photo Analysis with GPT-5.2 et Opus 4.6</p>
       </footer>
     </div>
+    </AnalysisQueueProvider>
   );
 }
 

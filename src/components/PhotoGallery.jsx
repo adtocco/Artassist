@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { findPhotoSeries, analyzePhoto, PROMPT_PRESETS } from '../lib/openai';
+import { useAnalysisQueue } from './AnalysisQueue';
 import './PhotoGallery.css';
 
 // Helper: resolve a preset ID to its label
@@ -76,6 +77,7 @@ function renderMarkdown(text) {
 }
 
 export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedCollection = null, collections = [], userSettings = null, onPhotosChanged = null, onSendToWall = null }) {
+  const { enqueue, lastDoneTimestamp } = useAnalysisQueue();
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -105,6 +107,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [gridColumns, setGridColumns] = useState(4);
   const [createdSeriesNames, setCreatedSeriesNames] = useState(new Set());
+  const [collectionAnalysisExpanded, setCollectionAnalysisExpanded] = useState(false);
 
   // Analysis options modal state
   const [showAnalysisOptions, setShowAnalysisOptions] = useState(false);
@@ -145,13 +148,34 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     fetchPhotos();
     if (selectedCollection?.id) {
       fetchSeriesList();
+      // Load saved collection analysis
+      if (selectedCollection.analysis) {
+        setSeriesRecommendation(selectedCollection.analysis);
+        setCollectionAnalysisExpanded(false);
+      } else {
+        setSeriesRecommendation(null);
+      }
     } else {
       setSeriesList([]);
       setActiveSeries(null);
       setSeriesAnalysisResult(null);
       setShowSeriesPanel(false);
+      setSeriesRecommendation(null);
     }
   }, [refreshTrigger, selectedCollection]);
+
+  // Auto-refresh when any background analysis completes
+  const initialMountRef = useRef(true);
+  useEffect(() => {
+    if (initialMountRef.current) {
+      initialMountRef.current = false;
+      return;
+    }
+    if (lastDoneTimestamp) {
+      fetchPhotos();
+      if (onPhotosChanged) onPhotosChanged();
+    }
+  }, [lastDoneTimestamp]);
 
   const fetchPhotos = async () => {
     try {
@@ -526,27 +550,32 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
   };
 
-  const analyzeSeriesItem = async () => {
+  const analyzeSeriesItem = () => {
     if (seriesPhotos.length < 2) {
       alert(lang === 'fr' ? 'Il faut au moins 2 photos pour analyser une série' : 'You need at least 2 photos to analyze a series');
       return;
     }
     setAnalyzingSeriesItem(true);
-    try {
-      const context = [activeSeries?.description, seriesContext].filter(Boolean).join('\n');
-      const result = await findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series');
-      setSeriesAnalysisResult(result);
-      // Save analysis to DB
-      await supabase
-        .from('collection_series')
-        .update({ analysis: result, updated_at: new Date().toISOString() })
-        .eq('id', activeSeries.id);
-    } catch (err) {
-      console.error('Error analyzing series:', err);
-      alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
-    } finally {
-      setAnalyzingSeriesItem(false);
-    }
+    const seriesId = activeSeries?.id;
+    const context = [activeSeries?.description, seriesContext].filter(Boolean).join('\n');
+
+    enqueue({
+      type: 'series',
+      title: activeSeries?.name || (lang === 'fr' ? 'Série' : 'Series'),
+      execute: () => findPhotoSeries(seriesPhotos, lang, context, userSettings, 'series'),
+      onComplete: async (result) => {
+        setSeriesAnalysisResult(result);
+        setAnalyzingSeriesItem(false);
+        // Save analysis to DB
+        await supabase
+          .from('collection_series')
+          .update({ analysis: result, updated_at: new Date().toISOString() })
+          .eq('id', seriesId);
+      },
+      onError: () => {
+        setAnalyzingSeriesItem(false);
+      },
+    });
   };
 
   const togglePhotoSelection = (photoId, e) => {
@@ -649,7 +678,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     setShowAnalysisOptions(true);
   };
 
-  const runAnalysisWithOptions = async () => {
+  const runAnalysisWithOptions = () => {
     setShowAnalysisOptions(false);
 
     const presetType = analysisOptionsMode === 'series' ? 'series' : analysisOptionsMode === 'photo' ? 'photo' : 'collection';
@@ -663,7 +692,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
 
     if (analysisOptionsMode === 'photo') {
-      // Photo re-analysis with overridden settings
+      // Photo re-analysis with overridden settings — enqueue each photo
       const overriddenSettings = {
         ...userSettings,
         prompt_photo_analysis: promptValue || userSettings?.prompt_photo_analysis || '',
@@ -673,41 +702,50 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       const resolvedPresetId = analysisPreset === 'custom' ? 'custom' : analysisPreset;
       for (const photo of photoAnalysisTargets) {
         setReanalyzingIds(prev => new Set(prev).add(photo.id));
-        try {
-          const { data: signedData } = await supabase.storage
-            .from('photos')
-            .createSignedUrl(photo.storage_path, 60);
-          const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
-          let collectionAnalysis = null;
-          if (selectedCollection?.id && selectedCollection.analysis_type) {
-            collectionAnalysis = { type: selectedCollection.analysis_type, instructions: selectedCollection.analysis_instructions };
-          }
-          const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, overriddenSettings);
-          await supabase.from('photo_analyses').update({
-            analysis: analysisResult.analysis,
-            photo_name: analysisResult.name,
-            prompt_type: resolvedPresetId,
-            analysis_detail_level: overriddenSettings.analysis_detail_level,
-            analysis_tone: overriddenSettings.analysis_tone,
-          }).eq('id', photo.id);
-          if (selectedCollection?.id && photo.collection_photo_id) {
-            await supabase.from('collection_photos').update({
+        enqueue({
+          type: 'photo',
+          title: photo.photo_name || photo.file_name || 'Photo',
+          execute: async () => {
+            const { data: signedData } = await supabase.storage
+              .from('photos')
+              .createSignedUrl(photo.storage_path, 60);
+            const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
+            let collectionAnalysis = null;
+            if (selectedCollection?.id && selectedCollection.analysis_type) {
+              collectionAnalysis = { type: selectedCollection.analysis_type, instructions: selectedCollection.analysis_instructions };
+            }
+            return await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, overriddenSettings);
+          },
+          onComplete: async (analysisResult) => {
+            await supabase.from('photo_analyses').update({
               analysis: analysisResult.analysis,
-              analysis_type: resolvedPresetId,
+              photo_name: analysisResult.name,
+              prompt_type: resolvedPresetId,
               analysis_detail_level: overriddenSettings.analysis_detail_level,
               analysis_tone: overriddenSettings.analysis_tone,
-            }).eq('id', photo.collection_photo_id);
-          }
-        } catch (err) {
-          console.error('Error re-analyzing photo:', err);
-        } finally {
-          setReanalyzingIds(prev => {
-            const next = new Set(prev);
-            next.delete(photo.id);
-            if (next.size === 0) fetchPhotos();
-            return next;
-          });
-        }
+            }).eq('id', photo.id);
+            if (selectedCollection?.id && photo.collection_photo_id) {
+              await supabase.from('collection_photos').update({
+                analysis: analysisResult.analysis,
+                analysis_type: resolvedPresetId,
+                analysis_detail_level: overriddenSettings.analysis_detail_level,
+                analysis_tone: overriddenSettings.analysis_tone,
+              }).eq('id', photo.collection_photo_id);
+            }
+            setReanalyzingIds(prev => {
+              const next = new Set(prev);
+              next.delete(photo.id);
+              return next;
+            });
+          },
+          onError: () => {
+            setReanalyzingIds(prev => {
+              const next = new Set(prev);
+              next.delete(photo.id);
+              return next;
+            });
+          },
+        });
       }
       return;
     }
@@ -724,26 +762,32 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         analysis_detail_level: analysisDetailLevel || userSettings?.analysis_detail_level || 'balanced',
         analysis_tone: analysisTone || userSettings?.analysis_tone || 'professional',
       };
+      const seriesId = activeSeries?.id;
+      const presetLabelValue = analysisPreset === 'custom'
+        ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
+        : getPresetLabel(analysisPreset, lang);
       setAnalyzingSeriesItem(true);
-      try {
-        const context = [activeSeries?.description, seriesInstructions].filter(Boolean).join('\n');
-        const result = await findPhotoSeries(seriesPhotos, lang, context, overriddenSettings, 'series');
-        setSeriesAnalysisResult(result);
-        // Track the preset label
-        const presetLabel = analysisPreset === 'custom'
-          ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
-          : getPresetLabel(analysisPreset, lang);
-        setLastAnalysisPresetLabel(presetLabel);
-        await supabase
-          .from('collection_series')
-          .update({ analysis: result, updated_at: new Date().toISOString() })
-          .eq('id', activeSeries.id);
-      } catch (err) {
-        console.error('Error analyzing series:', err);
-        alert(lang === 'fr' ? 'Erreur lors de l\'analyse : ' + err.message : 'Error analyzing: ' + err.message);
-      } finally {
-        setAnalyzingSeriesItem(false);
-      }
+
+      enqueue({
+        type: 'series',
+        title: activeSeries?.name || (lang === 'fr' ? 'Série' : 'Series'),
+        execute: () => {
+          const context = [activeSeries?.description, seriesInstructions].filter(Boolean).join('\n');
+          return findPhotoSeries(seriesPhotos, lang, context, overriddenSettings, 'series');
+        },
+        onComplete: async (result) => {
+          setSeriesAnalysisResult(result);
+          setLastAnalysisPresetLabel(presetLabelValue);
+          setAnalyzingSeriesItem(false);
+          await supabase
+            .from('collection_series')
+            .update({ analysis: result, updated_at: new Date().toISOString() })
+            .eq('id', seriesId);
+        },
+        onError: () => {
+          setAnalyzingSeriesItem(false);
+        },
+      });
       return;
     }
 
@@ -758,40 +802,57 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
       analysis_detail_level: analysisDetailLevel || userSettings?.analysis_detail_level || 'balanced',
       analysis_tone: analysisTone || userSettings?.analysis_tone || 'professional',
     };
+    const presetLabelValue = analysisPreset === 'custom'
+      ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
+      : getPresetLabel(analysisPreset, lang);
 
     setAnalyzingSeries(true);
-    try {
-      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions, overriddenSettings, 'collection');
-      setSeriesRecommendation(recommendation);
-      // Track the preset label for the report header
-      const presetLabel = analysisPreset === 'custom'
-        ? (lang === 'fr' ? '✏️ Personnalisé' : '✏️ Custom')
-        : getPresetLabel(analysisPreset, lang);
-      setLastAnalysisPresetLabel(presetLabel);
-    } catch (err) {
-      console.error('Error analyzing series:', err);
-      alert('Error analyzing photo series: ' + err.message);
-    } finally {
-      setAnalyzingSeries(false);
-    }
+
+    enqueue({
+      type: 'collection',
+      title: selectedCollection?.name || (lang === 'fr' ? 'Collection' : 'Collection'),
+      execute: () => findPhotoSeries(photos, lang, seriesInstructions, overriddenSettings, 'collection'),
+      onComplete: async (recommendation) => {
+        setSeriesRecommendation(recommendation);
+        setLastAnalysisPresetLabel(presetLabelValue);
+        setAnalyzingSeries(false);
+        setCollectionAnalysisExpanded(true);
+        // Persist to collections table
+        if (selectedCollection?.id) {
+          await supabase.from('collections').update({ analysis: recommendation }).eq('id', selectedCollection.id);
+        }
+      },
+      onError: () => {
+        setAnalyzingSeries(false);
+      },
+    });
   };
 
-  const analyzeCollection = async () => {
+  const analyzeCollection = () => {
     if (photos.length < 2) {
       alert('You need at least 2 photos to analyze series recommendations');
       return;
     }
 
     setAnalyzingSeries(true);
-    try {
-      const recommendation = await findPhotoSeries(photos, lang, seriesInstructions, userSettings, 'collection');
-      setSeriesRecommendation(recommendation);
-    } catch (err) {
-      console.error('Error analyzing series:', err);
-      alert('Error analyzing photo series: ' + err.message);
-    } finally {
-      setAnalyzingSeries(false);
-    }
+
+    enqueue({
+      type: 'collection',
+      title: selectedCollection?.name || (lang === 'fr' ? 'Collection' : 'Collection'),
+      execute: () => findPhotoSeries(photos, lang, seriesInstructions, userSettings, 'collection'),
+      onComplete: async (recommendation) => {
+        setSeriesRecommendation(recommendation);
+        setAnalyzingSeries(false);
+        setCollectionAnalysisExpanded(true);
+        // Persist to collections table
+        if (selectedCollection?.id) {
+          await supabase.from('collections').update({ analysis: recommendation }).eq('id', selectedCollection.id);
+        }
+      },
+      onError: () => {
+        setAnalyzingSeries(false);
+      },
+    });
   };
 
   // Parse collection analysis JSON
@@ -966,96 +1027,92 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
   };
 
-  const reanalyzePhoto = async (photo, e) => {
+  const reanalyzePhoto = (photo, e) => {
     if (e) e.stopPropagation();
     
     setReanalyzingIds(prev => new Set(prev).add(photo.id));
-    try {
-      // Get a signed URL for better reliability
-      const { data: signedData } = await supabase.storage
-        .from('photos')
-        .createSignedUrl(photo.storage_path, 60);
 
-      const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
+    enqueue({
+      type: 'photo',
+      title: photo.photo_name || photo.file_name || 'Photo',
+      execute: async () => {
+        // Get a signed URL for better reliability
+        const { data: signedData } = await supabase.storage
+          .from('photos')
+          .createSignedUrl(photo.storage_path, 60);
 
-      // Prepare collection analysis if we're in a collection view
-      let collectionAnalysis = null;
-      if (selectedCollection?.id && selectedCollection.analysis_type) {
-        collectionAnalysis = {
-          type: selectedCollection.analysis_type,
-          instructions: selectedCollection.analysis_instructions
-        };
-      }
+        const urlToAnalyze = signedData?.signedUrl || photo.photo_url;
 
-      // Re-analyze with OpenAI
-      const analysisResult = await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, userSettings);
+        // Prepare collection analysis if we're in a collection view
+        let collectionAnalysis = null;
+        if (selectedCollection?.id && selectedCollection.analysis_type) {
+          collectionAnalysis = {
+            type: selectedCollection.analysis_type,
+            instructions: selectedCollection.analysis_instructions
+          };
+        }
 
-      // Update in database
-      const { error: updateError } = await supabase
-        .from('photo_analyses')
-        .update({
-          analysis: analysisResult.analysis,
-          photo_name: analysisResult.name,
-          analysis_detail_level: userSettings?.analysis_detail_level || null,
-          analysis_tone: userSettings?.analysis_tone || null,
-          analysis_focus_areas: userSettings?.focus_areas || []
-        })
-        .eq('id', photo.id);
-
-      if (updateError) throw updateError;
-
-      // If we're in a collection view, also update the collection-specific analysis
-      if (selectedCollection?.id && photo.collection_photo_id) {
+        // Re-analyze with OpenAI
+        return await analyzePhoto(urlToAnalyze, photo.prompt_type || 'artist', lang, collectionAnalysis, userSettings);
+      },
+      onComplete: async (analysisResult) => {
+        // Update in database
         await supabase
-          .from('collection_photos')
+          .from('photo_analyses')
           .update({
             analysis: analysisResult.analysis,
-            analysis_type: selectedCollection.analysis_type,
+            photo_name: analysisResult.name,
             analysis_detail_level: userSettings?.analysis_detail_level || null,
             analysis_tone: userSettings?.analysis_tone || null,
             analysis_focus_areas: userSettings?.focus_areas || []
           })
-          .eq('id', photo.collection_photo_id);
-      }
+          .eq('id', photo.id);
 
-    } catch (err) {
-      console.error('Error re-analyzing photo:', err);
-      alert(lang === 'fr' ? 'Erreur lors de la ré-analyse : ' + err.message : 'Error re-analyzing photo: ' + err.message);
-    } finally {
-      setReanalyzingIds(prev => {
-        const next = new Set(prev);
-        next.delete(photo.id);
-        // If this was the last one, refresh the photo list
-        if (next.size === 0) {
-          fetchPhotos();
+        // If we're in a collection view, also update the collection-specific analysis
+        if (selectedCollection?.id && photo.collection_photo_id) {
+          await supabase
+            .from('collection_photos')
+            .update({
+              analysis: analysisResult.analysis,
+              analysis_type: selectedCollection.analysis_type,
+              analysis_detail_level: userSettings?.analysis_detail_level || null,
+              analysis_tone: userSettings?.analysis_tone || null,
+              analysis_focus_areas: userSettings?.focus_areas || []
+            })
+            .eq('id', photo.collection_photo_id);
         }
-        return next;
-      });
-    }
+
+        setReanalyzingIds(prev => {
+          const next = new Set(prev);
+          next.delete(photo.id);
+          return next;
+        });
+      },
+      onError: () => {
+        setReanalyzingIds(prev => {
+          const next = new Set(prev);
+          next.delete(photo.id);
+          return next;
+        });
+      },
+    });
   };
 
-  const reanalyzeBulk = async () => {
+  const reanalyzeBulk = () => {
     const ids = Array.from(selectedPhotos);
     const photosToReanalyze = photos.filter(p => ids.includes(p.id));
     if (photosToReanalyze.length === 0) return;
 
     const msg = lang === 'fr'
-      ? `Ré-analyser ${photosToReanalyze.length} photo(s) ? Cela peut prendre du temps.`
-      : `Re-analyze ${photosToReanalyze.length} photo(s)? This may take a while.`;
+      ? `Ré-analyser ${photosToReanalyze.length} photo(s) ? Les analyses seront lancées en arrière-plan.`
+      : `Re-analyze ${photosToReanalyze.length} photo(s)? Analyses will run in the background.`;
     if (!confirm(msg)) return;
 
     setSelectedPhotos(new Set());
     
-    // Mark all as reanalyzing
-    setReanalyzingIds(prev => {
-      const next = new Set(prev);
-      photosToReanalyze.forEach(p => next.add(p.id));
-      return next;
-    });
-
-    // Process sequentially to avoid API rate limits
+    // Enqueue each photo for re-analysis (the queue processes them sequentially)
     for (const photo of photosToReanalyze) {
-      await reanalyzePhoto(photo);
+      reanalyzePhoto(photo);
     }
   };
 
@@ -1201,6 +1258,15 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
             >
               {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Analyser la collection' : 'Analyze Collection')}
             </button>
+            {seriesRecommendation && !collectionAnalysisExpanded && (
+              <button
+                onClick={() => setCollectionAnalysisExpanded(true)}
+                className="show-analysis-button"
+                title={lang === 'fr' ? 'Voir la dernière analyse' : 'View last analysis'}
+              >
+                📊 {lang === 'fr' ? 'Voir l\'analyse' : 'View Analysis'}
+              </button>
+            )}
             <button
               onClick={exportPhotosAsJson}
               disabled={photos.length === 0}
@@ -1270,7 +1336,7 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
         </div>
       )}
 
-      {seriesRecommendation && (() => {
+      {seriesRecommendation && collectionAnalysisExpanded && (() => {
         const parsed = parseCollectionAnalysis(seriesRecommendation);
         if (parsed && parsed.series) {
           // Structured JSON rendering
@@ -1385,10 +1451,10 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                   💾 {lang === 'fr' ? 'Sauvegarder' : 'Save'}
                 </button>
                 <button 
-                  onClick={() => setSeriesRecommendation(null)}
+                  onClick={() => setCollectionAnalysisExpanded(false)}
                   className="close-recommendation"
                 >
-                  {lang === 'fr' ? 'Fermer' : 'Close'}
+                  {lang === 'fr' ? 'Réduire' : 'Collapse'}
                 </button>
               </div>
             </div>
@@ -1423,10 +1489,10 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
                 </button>
               )}
               <button 
-                onClick={() => setSeriesRecommendation(null)}
+                onClick={() => setCollectionAnalysisExpanded(false)}
                 className="close-recommendation"
               >
-                {lang === 'fr' ? 'Fermer' : 'Close'}
+                {lang === 'fr' ? 'Réduire' : 'Collapse'}
               </button>
             </div>
           </div>
