@@ -243,6 +243,21 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
     }
   };
 
+  const exportPhotosAsJson = () => {
+    const exportData = photos.map(({ photo_url, ...photo }) => photo);
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const collectionName = selectedCollection?.name || 'photos';
+    a.download = `${collectionName.replace(/\s+/g, '_')}_export.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const analyzeCollection = async () => {
     if (photos.length < 2) {
       alert('You need at least 2 photos to analyze series recommendations');
@@ -567,6 +582,14 @@ export default function PhotoGallery({ refreshTrigger, lang = 'fr', selectedColl
           className="analyze-series-button"
         >
           {analyzingSeries ? (lang === 'fr' ? 'Analyse en cours...' : 'Analyzing...') : '🎯 ' + (lang === 'fr' ? 'Analyser la collection' : 'Analyze Collection')}
+        </button>
+        <button
+          onClick={exportPhotosAsJson}
+          disabled={photos.length === 0}
+          className="export-json-button"
+          title={lang === 'fr' ? 'Exporter les données en JSON' : 'Export data as JSON'}
+        >
+          📥 {lang === 'fr' ? 'Exporter JSON' : 'Export JSON'}
         </button>
       </div>
 

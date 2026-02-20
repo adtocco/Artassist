@@ -477,3 +477,50 @@
 .file-preview-item:hover .remove-file {
   opacity: 1;
 }
+
+/* ===== Mobile responsive ===== */
+@media (max-width: 768px) {
+  .photo-upload {
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+  }
+
+  .photo-upload h2 {
+    font-size: 1.1em;
+    margin-bottom: 15px;
+  }
+
+  .upload-controls {
+    gap: 12px;
+  }
+
+  .prompt-selector select {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .file-input-wrapper label {
+    padding: 12px;
+    font-size: 0.9em;
+  }
+
+  .upload-button {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+
+  .no-collection-warning {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .file-preview-item {
+    width: 56px;
+    height: 56px;
+  }
+
+  .file-preview-item .remove-file {
+    opacity: 1;
+  }
+}

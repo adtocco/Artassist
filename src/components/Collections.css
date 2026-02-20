@@ -368,3 +368,67 @@
   color: #667eea;
   font-weight: 500;
 }
+
+/* ===== Mobile responsive ===== */
+@media (max-width: 768px) {
+  .collections-container {
+    padding: 12px;
+    flex: none;
+    height: auto;
+    overflow: visible;
+  }
+
+  .collections-list {
+    flex: none;
+    overflow: visible;
+    max-height: none;
+  }
+
+  .collections-header {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+  }
+
+  .collections-header h3 {
+    font-size: 1em;
+  }
+
+  .create-collection-btn {
+    padding: 5px 10px;
+    font-size: 0.8em;
+  }
+
+  .collection-item {
+    padding: 8px;
+    gap: 10px;
+  }
+
+  .collection-cover {
+    width: 36px;
+    height: 36px;
+  }
+
+  .collection-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1em;
+  }
+
+  .collection-actions {
+    opacity: 1;
+  }
+
+  .collection-actions button {
+    padding: 6px 8px;
+  }
+
+  .collection-dialog {
+    max-width: 90vw;
+    padding: 20px;
+  }
+
+  .available-photos-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+}
